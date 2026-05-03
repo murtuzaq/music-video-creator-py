@@ -12,7 +12,6 @@ class MusicVideoCreator(tk.Tk):
         self.geometry("900x650")
         self.resizable(True, True)
 
-        # App state
         self.audio_path = None
         self.image_entries = []
         self._generating = False
@@ -72,8 +71,15 @@ class MusicVideoCreator(tk.Tk):
             bg="#5cb85c", fg="white", relief=tk.FLAT, padx=8
         ).pack(side=tk.RIGHT)
 
+        # Small help text
+        tk.Label(
+            parent,
+            text='"Switch after" = seconds before the next image appears. The last image plays until the audio ends.',
+            fg="#888", font=("Helvetica", 8), anchor="w"
+        ).pack(fill=tk.X, pady=(2, 4))
+
         container = tk.Frame(parent, relief=tk.SUNKEN, bd=1)
-        container.pack(fill=tk.BOTH, expand=True, pady=(6, 0))
+        container.pack(fill=tk.BOTH, expand=True)
 
         canvas = tk.Canvas(container, highlightthickness=0)
         scrollbar = ttk.Scrollbar(container, orient="vertical", command=canvas.yview)
@@ -100,7 +106,7 @@ class MusicVideoCreator(tk.Tk):
         if not self.image_entries:
             lbl = tk.Label(
                 self.image_list_frame,
-                text='Click "+ Add Image" to add images with durations.',
+                text='Click "+ Add Image" to add images.',
                 fg="gray", pady=20
             )
             lbl._is_empty_label = True
@@ -124,14 +130,14 @@ class MusicVideoCreator(tk.Tk):
             tk.Label(f, text=label, bg="#1e1e1e", fg="#aaa", anchor="w", width=14).pack(side=tk.LEFT)
             tk.Label(f, textvariable=var, bg="#1e1e1e", fg="white", anchor="w").pack(side=tk.LEFT)
 
-        self.sv_audio = tk.StringVar(value="—")
-        self.sv_images = tk.StringVar(value="0")
-        self.sv_duration = tk.StringVar(value="0 s")
-        self.sv_output = tk.StringVar(value="—")
+        self.sv_audio    = tk.StringVar(value="—")
+        self.sv_images   = tk.StringVar(value="0")
+        self.sv_timed    = tk.StringVar(value="0 s timed")
+        self.sv_output   = tk.StringVar(value="—")
 
         row("Audio:", self.sv_audio)
         row("Images:", self.sv_images)
-        row("Total time:", self.sv_duration)
+        row("Timed slides:", self.sv_timed)
         row("Output:", self.sv_output)
 
     # ── Bottom bar ───────────────────────────────────────────────
@@ -139,14 +145,12 @@ class MusicVideoCreator(tk.Tk):
         bar = tk.Frame(self, bg="#2b2b2b", pady=6)
         bar.pack(fill=tk.X, side=tk.BOTTOM)
 
-        # Progress bar (hidden until generating)
         self.progress = ttk.Progressbar(bar, mode="indeterminate", length=200)
         self.progress.pack(side=tk.LEFT, padx=16, pady=4)
         self.progress.pack_forget()
 
         self.status_var = tk.StringVar(value="Ready.")
-        self.status_lbl = tk.Label(bar, textvariable=self.status_var, bg="#2b2b2b", fg="#aaa")
-        self.status_lbl.pack(side=tk.LEFT, padx=16)
+        tk.Label(bar, textvariable=self.status_var, bg="#2b2b2b", fg="#aaa").pack(side=tk.LEFT, padx=16)
 
         self.generate_btn = tk.Button(
             bar, text="▶  Generate Video",
@@ -176,16 +180,18 @@ class MusicVideoCreator(tk.Tk):
         )
         for path in paths:
             self._add_image_row(path)
+        self._refresh_last_row()
         self._refresh_summary()
 
     def _add_image_row(self, path):
-        entry = {"path": path, "duration_var": tk.DoubleVar(value=3.0)}
+        entry = {"path": path, "switch_var": tk.DoubleVar(value=3.0)}
         self.image_entries.append(entry)
 
         row = tk.Frame(self.image_list_frame, relief=tk.RIDGE, bd=1, padx=6, pady=4)
         row.pack(fill=tk.X, padx=4, pady=2)
         entry["row_widget"] = row
 
+        # Thumbnail
         try:
             img = Image.open(path)
             img.thumbnail((48, 48))
@@ -195,30 +201,68 @@ class MusicVideoCreator(tk.Tk):
         except Exception:
             tk.Label(row, text="[img]", width=6).pack(side=tk.LEFT)
 
+        # Filename
         name = os.path.basename(path)
-        tk.Label(row, text=name, anchor="w", wraplength=260).pack(side=tk.LEFT, fill=tk.X, expand=True)
+        tk.Label(row, text=name, anchor="w", wraplength=220).pack(side=tk.LEFT, fill=tk.X, expand=True)
 
-        tk.Label(row, text="Duration (s):").pack(side=tk.LEFT, padx=(8, 2))
-        spin = ttk.Spinbox(
-            row, from_=0.5, to=300, increment=0.5,
-            textvariable=entry["duration_var"], width=6,
-            command=self._refresh_summary
-        )
-        spin.pack(side=tk.LEFT)
-
+        # Remove button (far right)
         def remove(e=entry, r=row):
             self.image_entries.remove(e)
             r.destroy()
             self._update_empty_label()
+            self._refresh_last_row()
             self._refresh_summary()
 
         tk.Button(row, text="✕", command=remove, fg="red", relief=tk.FLAT, padx=4).pack(side=tk.RIGHT)
+
+        # Timing controls — stored so we can show/hide them
+        timing_frame = tk.Frame(row)
+        timing_frame.pack(side=tk.RIGHT, padx=(8, 4))
+        entry["timing_frame"] = timing_frame
+
+        # "Switch after" label + spinbox
+        switch_inner = tk.Frame(timing_frame)
+        switch_inner.pack()
+        entry["switch_inner"] = switch_inner
+
+        tk.Label(switch_inner, text="Switch after (s):").pack(side=tk.LEFT)
+        spin = ttk.Spinbox(
+            switch_inner, from_=0.5, to=3600, increment=0.5,
+            textvariable=entry["switch_var"], width=6,
+            command=self._refresh_summary
+        )
+        spin.pack(side=tk.LEFT)
+        entry["spin"] = spin
+
+        # "Until end" label (hidden by default, shown only for last image)
+        until_lbl = tk.Label(timing_frame, text="Until end of audio", fg="#5cb85c", font=("Helvetica", 9, "italic"))
+        entry["until_lbl"] = until_lbl
+
         self._update_empty_label()
 
+    def _refresh_last_row(self):
+        """Show spinbox for all rows except the last; last shows 'Until end of audio'."""
+        for i, entry in enumerate(self.image_entries):
+            is_last = (i == len(self.image_entries) - 1)
+            if is_last:
+                entry["switch_inner"].pack_forget()
+                entry["until_lbl"].pack()
+            else:
+                entry["until_lbl"].pack_forget()
+                entry["switch_inner"].pack()
+
     def _refresh_summary(self):
-        total = sum(e["duration_var"].get() for e in self.image_entries)
+        # All switch times except the last image (last plays until audio ends)
+        timed = sum(
+            e["switch_var"].get()
+            for e in self.image_entries[:-1]
+        ) if self.image_entries else 0
+
         self.sv_images.set(str(len(self.image_entries)))
-        self.sv_duration.set(f"{total:.1f} s")
+        if self.image_entries:
+            self.sv_timed.set(f"{timed:.1f} s + last until end")
+        else:
+            self.sv_timed.set("0 s")
 
     # ── Video generation ─────────────────────────────────────────
     def _generate_video(self):
@@ -232,7 +276,6 @@ class MusicVideoCreator(tk.Tk):
             messagebox.showwarning("No images", "Please add at least one image.")
             return
 
-        # Ask where to save
         out_path = filedialog.asksaveasfilename(
             title="Save video as…",
             defaultextension=".mp4",
@@ -244,13 +287,15 @@ class MusicVideoCreator(tk.Tk):
         self.sv_output.set(os.path.basename(out_path))
         self._set_generating(True)
 
-        # Snapshot entries so the thread has stable data
-        jobs = [(e["path"], e["duration_var"].get()) for e in self.image_entries]
-        audio = self.audio_path
+        # Snapshot: list of (img_path, switch_after) — switch_after is None for the last image
+        jobs = []
+        for i, e in enumerate(self.image_entries):
+            switch = e["switch_var"].get() if i < len(self.image_entries) - 1 else None
+            jobs.append((e["path"], switch))
 
         thread = threading.Thread(
             target=self._run_generation,
-            args=(jobs, audio, out_path),
+            args=(jobs, self.audio_path, out_path),
             daemon=True
         )
         thread.start()
@@ -258,29 +303,40 @@ class MusicVideoCreator(tk.Tk):
     def _run_generation(self, jobs, audio_path, out_path):
         try:
             self._set_status("Importing MoviePy…")
-            # MoviePy 2.x — imports come directly from `moviepy`, not `moviepy.editor`
             from moviepy import ImageClip, AudioFileClip, concatenate_videoclips
+
+            # Load audio first so we know the total duration
+            self._set_status("Loading audio…")
+            audio = AudioFileClip(audio_path)
+            audio_duration = audio.duration
+
+            # Calculate durations
+            # All images except last use their switch_after value as duration.
+            # Last image gets whatever is left.
+            timed_total = sum(switch for _, switch in jobs[:-1]) if len(jobs) > 1 else 0
+            last_duration = audio_duration - timed_total
+
+            if last_duration <= 0:
+                raise ValueError(
+                    f"Your 'switch after' times total {timed_total:.1f}s, "
+                    f"but the audio is only {audio_duration:.1f}s long. "
+                    f"Reduce the switch times so there is time left for the last image."
+                )
 
             clips = []
             total = len(jobs)
-            for i, (img_path, duration) in enumerate(jobs, 1):
+            for i, (img_path, switch) in enumerate(jobs, 1):
                 self._set_status(f"Processing image {i} of {total}…")
-                clip = ImageClip(img_path, duration=duration)
-                clip = clip.with_fps(24)
+                duration = switch if switch is not None else last_duration
+                clip = ImageClip(img_path, duration=duration).with_fps(24)
                 clips.append(clip)
 
             self._set_status("Joining clips…")
             video = concatenate_videoclips(clips, method="compose")
 
-            self._set_status("Loading audio…")
-            audio = AudioFileClip(audio_path)
-
-            # Match audio length to video (trim if longer, end early if shorter)
-            video_duration = video.duration
-            if audio.duration > video_duration:
-                audio = audio.subclipped(0, video_duration)
-            else:
-                audio = audio.with_duration(video_duration)
+            # Trim audio to exact video length (they should match, but just in case)
+            if audio.duration > video.duration:
+                audio = audio.subclipped(0, video.duration)
 
             video = video.with_audio(audio)
 
@@ -306,10 +362,7 @@ class MusicVideoCreator(tk.Tk):
     def _on_success(self, out_path):
         self._set_generating(False)
         self._set_status(f"Done! Saved to: {out_path}")
-        messagebox.showinfo(
-            "Video created!",
-            f"Your music video was saved to:\n\n{out_path}"
-        )
+        messagebox.showinfo("Video created!", f"Your music video was saved to:\n\n{out_path}")
 
     def _on_error(self, message):
         self._set_generating(False)
