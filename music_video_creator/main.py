@@ -253,6 +253,24 @@ class MusicVideoCreator(tk.Tk):
 
     def _run_transcription(self):
         try:
+            # Check ffmpeg is available before doing anything else
+            import shutil, subprocess
+            if not shutil.which("ffmpeg"):
+                raise EnvironmentError(
+                    "ffmpeg is not installed or not in your PATH.\n\n"
+                    "Whisper needs ffmpeg to read audio files.\n\n"
+                    "How to install ffmpeg on Windows:\n"
+                    "  1. Download from https://ffmpeg.org/download.html\n"
+                    "     (look for a Windows build, e.g. from gyan.dev or BtbN)\n"
+                    "  2. Extract the zip and copy the 'bin' folder somewhere\n"
+                    "     permanent (e.g. C:\\ffmpeg\\bin)\n"
+                    "  3. Add that folder to your System PATH:\n"
+                    "     Search → 'Edit environment variables' → Path → New\n"
+                    "  4. Restart this app and try again.\n\n"
+                    "Alternatively, install via winget:\n"
+                    "  winget install ffmpeg"
+                )
+
             import whisper
             self.after(0, lambda: self._set_status("Loading Whisper model…"))
             model = whisper.load_model("base")
@@ -267,8 +285,25 @@ class MusicVideoCreator(tk.Tk):
                         words.append({"text": clean, "start": w["start"], "end": w["end"]})
 
             self.after(0, self._on_transcription_done, words)
-        except Exception as exc:
+
+        except EnvironmentError as exc:
             self.after(0, self._on_transcription_error, str(exc))
+        except Exception as exc:
+            # Catch the raw WinError 2 / FileNotFoundError that ffmpeg throws
+            msg = str(exc)
+            if "WinError 2" in msg or "No such file" in msg or "cannot find the file" in msg:
+                friendly = (
+                    "ffmpeg was not found on your system.\n\n"
+                    "Whisper needs ffmpeg to read audio files.\n\n"
+                    "Install it with winget (open a terminal and run):\n"
+                    "  winget install ffmpeg\n\n"
+                    "Or download manually from https://ffmpeg.org/download.html,\n"
+                    "extract it, and add the 'bin' folder to your System PATH.\n\n"
+                    "Restart this app after installing."
+                )
+                self.after(0, self._on_transcription_error, friendly)
+            else:
+                self.after(0, self._on_transcription_error, msg)
 
     def _on_transcription_done(self, words):
         self.transcription_words = words
