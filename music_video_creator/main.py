@@ -16,9 +16,8 @@ class MusicVideoCreator(tk.Tk):
         self.image_entries = []
         self._generating = False
 
-        # Lyrics / transcription state
-        self.transcription_words = []   # [{text, start, end}, ...]
-        self.switch_points = []         # sorted list of selected start timestamps
+        self.transcription_words = []
+        self.switch_points = []   # absolute timestamps selected in lyrics
 
         self._build_ui()
 
@@ -37,11 +36,9 @@ class MusicVideoCreator(tk.Tk):
         content = tk.Frame(self)
         content.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
-        # Left: tabbed panel
         left = tk.Frame(content)
         left.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
-        # Right: summary
         right = tk.Frame(content, width=260, bg="#1e1e1e", relief=tk.SUNKEN, bd=1)
         right.pack(side=tk.RIGHT, fill=tk.Y, padx=(10, 0))
         right.pack_propagate(False)
@@ -77,18 +74,16 @@ class MusicVideoCreator(tk.Tk):
         ).pack(side=tk.RIGHT)
 
     # ─────────────────────────────────────────────────────────────
-    # Tabbed notebook: Images | Lyrics
+    # Notebook
     # ─────────────────────────────────────────────────────────────
     def _build_notebook(self, parent):
         self.notebook = ttk.Notebook(parent)
         self.notebook.pack(fill=tk.BOTH, expand=True)
 
-        # Tab 1 — Images & Timing
         tab_images = tk.Frame(self.notebook)
         self.notebook.add(tab_images, text="  🖼  Images & Timing  ")
         self._build_images_tab(tab_images)
 
-        # Tab 2 — Lyrics (locked until transcription)
         self.tab_lyrics = tk.Frame(self.notebook)
         self.notebook.add(self.tab_lyrics, text="  🎤  Lyrics  ", state="disabled")
         self._build_lyrics_tab(self.tab_lyrics)
@@ -106,7 +101,7 @@ class MusicVideoCreator(tk.Tk):
 
         tk.Label(
             parent,
-            text='"Switch after" = seconds until next image. Last image plays until audio ends.',
+            text='Image 1 always plays first. Each subsequent image has a "Load in" time (seconds into the audio).',
             fg="#888", font=("Helvetica", 8), anchor="w"
         ).pack(fill=tk.X, padx=4)
 
@@ -131,7 +126,6 @@ class MusicVideoCreator(tk.Tk):
 
     # ── Lyrics tab ───────────────────────────────────────────────
     def _build_lyrics_tab(self, parent):
-        # Counter / instruction bar
         bar = tk.Frame(parent, bg="#2b2b2b", pady=4)
         bar.pack(fill=tk.X)
 
@@ -140,11 +134,10 @@ class MusicVideoCreator(tk.Tk):
                  font=("Helvetica", 9)).pack(side=tk.LEFT, padx=10)
 
         tk.Button(
-            bar, text="Clear all switch points", command=self._clear_switch_points,
+            bar, text="Clear all", command=self._clear_switch_points,
             bg="#555", fg="white", relief=tk.FLAT, padx=8
         ).pack(side=tk.RIGHT, padx=8)
 
-        # Word display area
         text_frame = tk.Frame(parent)
         text_frame.pack(fill=tk.BOTH, expand=True, pady=(4, 0))
 
@@ -158,18 +151,10 @@ class MusicVideoCreator(tk.Tk):
         self.lyrics_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         lscroll.pack(side=tk.RIGHT, fill=tk.Y)
 
-        # Text widget tags
-        self.lyrics_text.tag_config("word",   foreground="#ddd",    font=("Helvetica", 13))
-        self.lyrics_text.tag_config("switch", foreground="white",   background="#c0671a",
+        self.lyrics_text.tag_config("word",   foreground="#ddd",  font=("Helvetica", 13))
+        self.lyrics_text.tag_config("switch", foreground="white", background="#c0671a",
                                     font=("Helvetica", 13, "bold"))
-        self.lyrics_text.tag_config("hover",  foreground="white",   background="#555")
-
-        self.lyrics_text.tag_bind("word",   "<Button-1>",    self._on_word_click)
-        self.lyrics_text.tag_bind("switch", "<Button-1>",    self._on_word_click)
-        self.lyrics_text.tag_bind("word",   "<Enter>",       lambda e: self._word_hover(e, True))
-        self.lyrics_text.tag_bind("word",   "<Leave>",       lambda e: self._word_hover(e, False))
-        self.lyrics_text.tag_bind("switch", "<Enter>",       lambda e: self._word_hover(e, True))
-        self.lyrics_text.tag_bind("switch", "<Leave>",       lambda e: self._word_hover(e, False))
+        self.lyrics_text.tag_config("hover",  foreground="white", background="#555")
 
     # ─────────────────────────────────────────────────────────────
     # Summary panel
@@ -189,17 +174,15 @@ class MusicVideoCreator(tk.Tk):
             tk.Label(f, textvariable=var, bg="#1e1e1e", fg="white", anchor="w",
                      wraplength=140, justify=tk.LEFT).pack(side=tk.LEFT)
 
-        self.sv_audio   = tk.StringVar(value="—")
-        self.sv_images  = tk.StringVar(value="0")
-        self.sv_timed   = tk.StringVar(value="0 s")
-        self.sv_points  = tk.StringVar(value="0")
-        self.sv_output  = tk.StringVar(value="—")
+        self.sv_audio  = tk.StringVar(value="—")
+        self.sv_images = tk.StringVar(value="0")
+        self.sv_points = tk.StringVar(value="0 / 0")
+        self.sv_output = tk.StringVar(value="—")
 
-        row("Audio:",        self.sv_audio)
-        row("Images:",       self.sv_images)
-        row("Timed slides:", self.sv_timed)
-        row("Switch pts:",   self.sv_points)
-        row("Output:",       self.sv_output)
+        row("Audio:",      self.sv_audio)
+        row("Images:",     self.sv_images)
+        row("Load points:", self.sv_points)
+        row("Output:",     self.sv_output)
 
     # ─────────────────────────────────────────────────────────────
     # Bottom bar
@@ -248,27 +231,20 @@ class MusicVideoCreator(tk.Tk):
         self.transcribe_btn.config(state=tk.DISABLED, text="Transcribing…")
         self._set_progress(True)
         self._set_status("Transcribing audio (this may take a minute the first time)…")
-        thread = threading.Thread(target=self._run_transcription, daemon=True)
-        thread.start()
+        threading.Thread(target=self._run_transcription, daemon=True).start()
 
     def _run_transcription(self):
         try:
-            # Check ffmpeg is available before doing anything else
-            import shutil, subprocess
+            import shutil
             if not shutil.which("ffmpeg"):
                 raise EnvironmentError(
                     "ffmpeg is not installed or not in your PATH.\n\n"
                     "Whisper needs ffmpeg to read audio files.\n\n"
-                    "How to install ffmpeg on Windows:\n"
-                    "  1. Download from https://ffmpeg.org/download.html\n"
-                    "     (look for a Windows build, e.g. from gyan.dev or BtbN)\n"
-                    "  2. Extract the zip and copy the 'bin' folder somewhere\n"
-                    "     permanent (e.g. C:\\ffmpeg\\bin)\n"
-                    "  3. Add that folder to your System PATH:\n"
-                    "     Search → 'Edit environment variables' → Path → New\n"
-                    "  4. Restart this app and try again.\n\n"
-                    "Alternatively, install via winget:\n"
-                    "  winget install ffmpeg"
+                    "Install via winget (open a terminal):\n"
+                    "  winget install ffmpeg\n\n"
+                    "Or download from https://ffmpeg.org/download.html,\n"
+                    "extract it, and add the 'bin' folder to your System PATH.\n\n"
+                    "Restart this app after installing."
                 )
 
             import whisper
@@ -289,21 +265,14 @@ class MusicVideoCreator(tk.Tk):
         except EnvironmentError as exc:
             self.after(0, self._on_transcription_error, str(exc))
         except Exception as exc:
-            # Catch the raw WinError 2 / FileNotFoundError that ffmpeg throws
             msg = str(exc)
             if "WinError 2" in msg or "No such file" in msg or "cannot find the file" in msg:
-                friendly = (
-                    "ffmpeg was not found on your system.\n\n"
-                    "Whisper needs ffmpeg to read audio files.\n\n"
-                    "Install it with winget (open a terminal and run):\n"
-                    "  winget install ffmpeg\n\n"
-                    "Or download manually from https://ffmpeg.org/download.html,\n"
-                    "extract it, and add the 'bin' folder to your System PATH.\n\n"
-                    "Restart this app after installing."
+                msg = (
+                    "ffmpeg was not found.\n\n"
+                    "Install it with:\n  winget install ffmpeg\n\n"
+                    "Then restart this app."
                 )
-                self.after(0, self._on_transcription_error, friendly)
-            else:
-                self.after(0, self._on_transcription_error, msg)
+            self.after(0, self._on_transcription_error, msg)
 
     def _on_transcription_done(self, words):
         self.transcription_words = words
@@ -329,13 +298,11 @@ class MusicVideoCreator(tk.Tk):
 
         prev_end = -1
         for i, w in enumerate(self.transcription_words):
-            # Add a newline for noticeable gaps (> 2 s silence)
             if prev_end >= 0 and w["start"] - prev_end > 2.0:
                 txt.insert(tk.END, "\n\n")
 
             tag_name = f"w{i}"
-            display = w["text"] + " "
-            txt.insert(tk.END, display, ("word", tag_name))
+            txt.insert(tk.END, w["text"] + " ", ("word", tag_name))
             txt.tag_bind(tag_name, "<Button-1>", lambda e, idx=i: self._toggle_word(idx))
             txt.tag_bind(tag_name, "<Enter>",    lambda e, idx=i: self._hover_word(idx, True))
             txt.tag_bind(tag_name, "<Leave>",    lambda e, idx=i: self._hover_word(idx, False))
@@ -347,37 +314,34 @@ class MusicVideoCreator(tk.Tk):
     # Word click / hover
     # ─────────────────────────────────────────────────────────────
     def _toggle_word(self, idx):
-        w = self.transcription_words[idx]
-        ts = w["start"]
+        ts  = self.transcription_words[idx]["start"]
         tag = f"w{idx}"
 
         if ts in self.switch_points:
             self.switch_points.remove(ts)
-            self._set_word_style(tag, selected=False)
+            self._set_word_style(tag, False)
         else:
             needed = max(0, len(self.image_entries) - 1)
             if needed > 0 and len(self.switch_points) >= needed:
                 messagebox.showinfo(
-                    "Enough switch points",
-                    f"You already have {needed} switch point(s) — one per image transition.\n"
+                    "Enough load points",
+                    f"You already have {needed} load point(s) — one per image after the first.\n"
                     "Remove one first, or add more images."
                 )
                 return
             self.switch_points.append(ts)
             self.switch_points.sort()
-            self._set_word_style(tag, selected=True)
+            self._set_word_style(tag, True)
 
         self._update_switch_counter()
         self._apply_switch_points()
 
     def _hover_word(self, idx, entering):
         tag = f"w{idx}"
-        ts = self.transcription_words[idx]["start"]
-        is_selected = ts in self.switch_points
-
+        ts  = self.transcription_words[idx]["start"]
         txt = self.lyrics_text
         txt.config(state=tk.NORMAL)
-        if entering and not is_selected:
+        if entering and ts not in self.switch_points:
             txt.tag_add("hover", f"{tag}.first", f"{tag}.last")
         else:
             txt.tag_remove("hover", "1.0", tk.END)
@@ -392,10 +356,6 @@ class MusicVideoCreator(tk.Tk):
             txt.tag_remove("switch", f"{tag}.first", f"{tag}.last")
         txt.config(state=tk.DISABLED)
 
-    # These generic tag binds exist as fallback but individual w# tags handle clicks
-    def _on_word_click(self, event): pass
-    def _word_hover(self, event, entering): pass
-
     def _clear_switch_points(self):
         self.switch_points.clear()
         txt = self.lyrics_text
@@ -406,35 +366,33 @@ class MusicVideoCreator(tk.Tk):
         self._apply_switch_points()
 
     # ─────────────────────────────────────────────────────────────
-    # Apply switch points → image switch_vars
+    # Apply load points → load_var on each image (images 2+)
     # ─────────────────────────────────────────────────────────────
     def _apply_switch_points(self):
-        """Convert selected word timestamps into 'switch after' values for each image."""
+        """Set absolute 'Load in' timestamps for images 2+ from selected lyrics words."""
         pts = sorted(self.switch_points)
-        prev = 0.0
-        for i, entry in enumerate(self.image_entries[:-1]):  # skip last image
+        # image_entries[0] has no load_var (plays first)
+        for i, entry in enumerate(self.image_entries[1:]):
             if i < len(pts):
-                entry["switch_var"].set(round(pts[i] - prev, 2))
-                prev = pts[i]
+                entry["load_var"].set(round(pts[i], 2))
         self._refresh_summary()
 
     def _update_switch_counter(self):
         needed = max(0, len(self.image_entries) - 1)
         have   = len(self.switch_points)
         if needed == 0:
-            msg = "Add images in the Images tab, then click words here to set switch points."
+            msg = "Add images in the Images tab, then click words to set their load times."
         elif have < needed:
-            remaining = needed - have
-            msg = f"Click {remaining} more word(s) to set all {needed} switch point(s)."
+            msg = f"Click {needed - have} more word(s) to set all {needed} load time(s)."
         elif have == needed:
-            msg = f"✓ All {needed} switch point(s) set. Ready to generate!"
+            msg = f"✓ All {needed} load time(s) set. Ready to generate!"
         else:
-            msg = f"⚠ {have} switch points selected but only {needed} needed. Remove some."
+            msg = f"⚠ {have} points selected but only {needed} needed. Remove some."
         self.counter_var.set(msg)
         self.sv_points.set(f"{have} / {needed}")
 
     # ─────────────────────────────────────────────────────────────
-    # Image list actions
+    # Image list
     # ─────────────────────────────────────────────────────────────
     def _update_empty_label(self):
         for w in self.image_list_frame.winfo_children():
@@ -456,18 +414,21 @@ class MusicVideoCreator(tk.Tk):
         )
         for path in paths:
             self._add_image_row(path)
-        self._refresh_last_row()
+        self._refresh_first_row()
         self._refresh_summary()
         self._update_switch_counter()
 
     def _add_image_row(self, path):
-        entry = {"path": path, "switch_var": tk.DoubleVar(value=3.0)}
+        # Default load time: 3s × position (image 2 → 3s, image 3 → 6s, …)
+        default_load = 3.0 * len(self.image_entries)
+        entry = {"path": path, "load_var": tk.DoubleVar(value=default_load)}
         self.image_entries.append(entry)
 
         row = tk.Frame(self.image_list_frame, relief=tk.RIDGE, bd=1, padx=6, pady=4)
         row.pack(fill=tk.X, padx=4, pady=2)
         entry["row_widget"] = row
 
+        # Thumbnail
         try:
             img = Image.open(path)
             img.thumbnail((48, 48))
@@ -477,61 +438,58 @@ class MusicVideoCreator(tk.Tk):
         except Exception:
             tk.Label(row, text="[img]", width=6).pack(side=tk.LEFT)
 
+        # Filename
         name = os.path.basename(path)
         tk.Label(row, text=name, anchor="w", wraplength=220).pack(side=tk.LEFT, fill=tk.X, expand=True)
 
+        # Remove button
         def remove(e=entry, r=row):
             self.image_entries.remove(e)
             r.destroy()
             self._update_empty_label()
-            self._refresh_last_row()
+            self._refresh_first_row()
             self._refresh_summary()
             self._update_switch_counter()
 
         tk.Button(row, text="✕", command=remove, fg="red", relief=tk.FLAT, padx=4).pack(side=tk.RIGHT)
 
+        # Timing widget container
         timing_frame = tk.Frame(row)
         timing_frame.pack(side=tk.RIGHT, padx=(8, 4))
         entry["timing_frame"] = timing_frame
 
-        switch_inner = tk.Frame(timing_frame)
-        switch_inner.pack()
-        entry["switch_inner"] = switch_inner
+        # "Plays first" label (shown only for image 1)
+        first_lbl = tk.Label(timing_frame, text="Plays first",
+                             fg="#5cb85c", font=("Helvetica", 9, "italic"))
+        entry["first_lbl"] = first_lbl
 
-        tk.Label(switch_inner, text="Switch after (s):").pack(side=tk.LEFT)
+        # "Load in: [spinbox] s" (shown for images 2+)
+        load_inner = tk.Frame(timing_frame)
+        entry["load_inner"] = load_inner
+        tk.Label(load_inner, text="Load in:").pack(side=tk.LEFT)
         spin = ttk.Spinbox(
-            switch_inner, from_=0.5, to=3600, increment=0.5,
-            textvariable=entry["switch_var"], width=6,
+            load_inner, from_=0.1, to=7200, increment=0.5,
+            textvariable=entry["load_var"], width=7,
             command=self._refresh_summary
         )
-        spin.pack(side=tk.LEFT)
+        spin.pack(side=tk.LEFT, padx=(4, 2))
+        tk.Label(load_inner, text="s").pack(side=tk.LEFT)
         entry["spin"] = spin
-
-        until_lbl = tk.Label(timing_frame, text="Until end of audio",
-                             fg="#5cb85c", font=("Helvetica", 9, "italic"))
-        entry["until_lbl"] = until_lbl
 
         self._update_empty_label()
 
-    def _refresh_last_row(self):
+    def _refresh_first_row(self):
+        """Image 1 → 'Plays first'. Images 2+ → 'Load in: X s'."""
         for i, entry in enumerate(self.image_entries):
-            is_last = (i == len(self.image_entries) - 1)
-            if is_last:
-                entry["switch_inner"].pack_forget()
-                entry["until_lbl"].pack()
+            if i == 0:
+                entry["load_inner"].pack_forget()
+                entry["first_lbl"].pack()
             else:
-                entry["until_lbl"].pack_forget()
-                entry["switch_inner"].pack()
+                entry["first_lbl"].pack_forget()
+                entry["load_inner"].pack()
 
     def _refresh_summary(self):
-        timed = sum(
-            e["switch_var"].get() for e in self.image_entries[:-1]
-        ) if self.image_entries else 0
         self.sv_images.set(str(len(self.image_entries)))
-        if self.image_entries:
-            self.sv_timed.set(f"{timed:.1f} s + last until end")
-        else:
-            self.sv_timed.set("0 s")
 
     # ─────────────────────────────────────────────────────────────
     # Video generation
@@ -546,6 +504,19 @@ class MusicVideoCreator(tk.Tk):
             messagebox.showwarning("No images", "Please add at least one image.")
             return
 
+        # Validate load times are strictly increasing
+        if len(self.image_entries) > 1:
+            load_times = [e["load_var"].get() for e in self.image_entries[1:]]
+            for i in range(1, len(load_times)):
+                if load_times[i] <= load_times[i - 1]:
+                    messagebox.showerror(
+                        "Invalid load times",
+                        f"Image {i + 2} has a 'Load in' time ({load_times[i]:.1f}s) that is not "
+                        f"after image {i + 1} ({load_times[i - 1]:.1f}s).\n\n"
+                        "Load times must be strictly increasing."
+                    )
+                    return
+
         out_path = filedialog.asksaveasfilename(
             title="Save video as…",
             defaultextension=".mp4",
@@ -557,17 +528,17 @@ class MusicVideoCreator(tk.Tk):
         self.sv_output.set(os.path.basename(out_path))
         self._set_generating(True)
 
-        jobs = []
-        for i, e in enumerate(self.image_entries):
-            switch = e["switch_var"].get() if i < len(self.image_entries) - 1 else None
-            jobs.append((e["path"], switch))
+        # Build job list: (img_path, load_time_or_None)
+        # Image 1 has no load time (starts at 0); images 2+ have absolute load times.
+        jobs = [(self.image_entries[0]["path"], None)]
+        for e in self.image_entries[1:]:
+            jobs.append((e["path"], e["load_var"].get()))
 
-        thread = threading.Thread(
+        threading.Thread(
             target=self._run_generation,
             args=(jobs, self.audio_path, out_path),
             daemon=True
-        )
-        thread.start()
+        ).start()
 
     def _run_generation(self, jobs, audio_path, out_path):
         try:
@@ -578,19 +549,28 @@ class MusicVideoCreator(tk.Tk):
             audio = AudioFileClip(audio_path)
             audio_duration = audio.duration
 
-            timed_total = sum(s for _, s in jobs[:-1]) if len(jobs) > 1 else 0
-            last_duration = audio_duration - timed_total
+            # Build absolute start times: image 1 starts at 0
+            load_times = [0.0] + [lt for _, lt in jobs[1:]]
 
-            if last_duration <= 0:
+            # Validate last load time is before audio end
+            if load_times[-1] >= audio_duration:
                 raise ValueError(
-                    f"Switch times total {timed_total:.1f}s but audio is only "
-                    f"{audio_duration:.1f}s. Reduce switch times."
+                    f"The last image's 'Load in' time ({load_times[-1]:.1f}s) is at or after "
+                    f"the end of the audio ({audio_duration:.1f}s). "
+                    "Reduce its load time."
                 )
 
+            # Calculate each image's duration from the gaps between load times
+            durations = []
+            for i in range(len(load_times)):
+                if i < len(load_times) - 1:
+                    durations.append(load_times[i + 1] - load_times[i])
+                else:
+                    durations.append(audio_duration - load_times[i])
+
             clips = []
-            for i, (img_path, switch) in enumerate(jobs, 1):
+            for i, ((img_path, _), duration) in enumerate(zip(jobs, durations), 1):
                 self._set_status(f"Processing image {i} of {len(jobs)}…")
-                duration = switch if switch is not None else last_duration
                 clip = ImageClip(img_path, duration=duration).with_fps(24)
                 clips.append(clip)
 
