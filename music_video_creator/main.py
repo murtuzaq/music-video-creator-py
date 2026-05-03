@@ -258,14 +258,15 @@ class MusicVideoCreator(tk.Tk):
     def _run_generation(self, jobs, audio_path, out_path):
         try:
             self._set_status("Importing MoviePy…")
-            from moviepy.editor import ImageClip, AudioFileClip, concatenate_videoclips
+            # MoviePy 2.x — imports come directly from `moviepy`, not `moviepy.editor`
+            from moviepy import ImageClip, AudioFileClip, concatenate_videoclips
 
             clips = []
             total = len(jobs)
             for i, (img_path, duration) in enumerate(jobs, 1):
                 self._set_status(f"Processing image {i} of {total}…")
                 clip = ImageClip(img_path, duration=duration)
-                clip = clip.set_fps(24)
+                clip = clip.with_fps(24)
                 clips.append(clip)
 
             self._set_status("Joining clips…")
@@ -274,15 +275,14 @@ class MusicVideoCreator(tk.Tk):
             self._set_status("Loading audio…")
             audio = AudioFileClip(audio_path)
 
-            # Match audio length to video (trim if longer, loop if shorter)
+            # Match audio length to video (trim if longer, end early if shorter)
             video_duration = video.duration
             if audio.duration > video_duration:
-                audio = audio.subclip(0, video_duration)
+                audio = audio.subclipped(0, video_duration)
             else:
-                # Pad with silence by letting moviepy end audio early
-                audio = audio.set_duration(video_duration)
+                audio = audio.with_duration(video_duration)
 
-            video = video.set_audio(audio)
+            video = video.with_audio(audio)
 
             self._set_status("Rendering video — this may take a moment…")
             video.write_videofile(
