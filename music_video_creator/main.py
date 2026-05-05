@@ -96,16 +96,28 @@ class MusicVideoCreator(tk.Tk):
     def _on_image_list_changed(self):
         self._refresh_summary()
         self._update_switch_counter()
+        self._update_generate_button()
 
     # ─────────────────────────────────────────────────────────────
     # Summary panel + Bottom bar (unchanged)
     # ─────────────────────────────────────────────────────────────
     def _panel_summary(self, parent):
-        self.summary_panel = SummaryPanel(parent)
+        self.summary_panel = SummaryPanel(parent, self._generate_video)
 
 
     def _build_bottom_bar(self):
-        self.bottom_bar = BottomBar(self, self._generate_video)
+        self.bottom_bar = BottomBar(self)
+
+    def _update_generate_button(self):
+        has_audio = self.state.audio_path is not None
+        has_images = len(self.state.image_entries) > 0
+
+        needed_points = max(0, len(self.state.image_entries) - 1)
+        has_points = len(self.state.switch_points) == needed_points
+
+        ready = has_audio and has_images and has_points and self.state.generating == False
+
+        self.summary_panel.set_generate_enabled(ready)
 
     # ─────────────────────────────────────────────────────────────
     # Audio actions
@@ -122,6 +134,8 @@ class MusicVideoCreator(tk.Tk):
             self.summary_panel.set_audio(name)
             self.bottom_bar.set_status(f"Audio loaded: {name}")
             self.audio_section.set_transcribe_enabled(True)
+
+        self._update_generate_button()
 
     def _pick_lyrics(self):
         """Load lyrics from text file and optionally align to audio"""
@@ -247,6 +261,7 @@ class MusicVideoCreator(tk.Tk):
             msg = f"⚠ {have} points selected but only {needed} needed."
         self.lyrics_tab.set_counter_text(msg)
         self.summary_panel.set_points(have, needed)
+        self._update_generate_button()
 
     def _add_image(self):
         self.image_list.add_images_from_dialog()
@@ -283,7 +298,9 @@ class MusicVideoCreator(tk.Tk):
 
         self.summary_panel.set_output(os.path.basename(out_path))
         self.state.generating = True
-        self.bottom_bar.set_generating(True)
+        self.summary_panel.set_generating(True)
+        self._update_generate_button()
+        self.bottom_bar.set_progress(True)
 
         jobs = [(self.state.image_entries[0]["path"], None)]
         for e in self.state.image_entries[1:]:
@@ -300,13 +317,17 @@ class MusicVideoCreator(tk.Tk):
 
     def _on_success(self, out_path):
         self.state.generating = False
-        self.bottom_bar.set_generating(False)
+        self.summary_panel.set_generating(False)
+        self.bottom_bar.set_progress(False)
+        self._update_generate_button()
         self.bottom_bar.set_status(f"Done! Saved to: {out_path}")
         messagebox.showinfo("Success", f"Video saved to:\n\n{out_path}")
 
     def _on_error(self, message):
         self.state.generating = False
-        self.bottom_bar.set_generating(False)
+        self.summary_panel.set_generating(False)
+        self.bottom_bar.set_progress(False)
+        self._update_generate_button()
         self.bottom_bar.set_status("Generation failed.")
         messagebox.showerror("Error", message)
 

@@ -5,7 +5,7 @@ from tkinter import ttk
 
 
 class BottomBar:
-    def __init__(self, parent, on_generate):
+    def __init__(self, parent):
         self.frame = tk.Frame(parent, bg="#2b2b2b", pady=6)
         self.frame.pack(fill=tk.X, side=tk.BOTTOM)
 
@@ -21,19 +21,6 @@ class BottomBar:
             fg="#aaa"
         ).pack(side=tk.LEFT, padx=16)
 
-        self.generate_btn = tk.Button(
-            self.frame,
-            text="▶  Generate Video",
-            command=on_generate,
-            bg="#e05c00",
-            fg="white",
-            font=("Helvetica", 11, "bold"),
-            relief=tk.FLAT,
-            padx=16,
-            pady=4
-        )
-        self.generate_btn.pack(side=tk.RIGHT, padx=16)
-
     # ─────────────────────────────────────────
 
     def set_status(self, msg):
@@ -46,11 +33,3 @@ class BottomBar:
         else:
             self.progress.stop()
             self.progress.pack_forget()
-
-    def set_generating(self, state):
-        if state:
-            self.generate_btn.config(state=tk.DISABLED, text="Generating…")
-            self.set_progress(True)
-        else:
-            self.generate_btn.config(state=tk.NORMAL, text="▶  Generate Video")
-            self.set_progress(False)

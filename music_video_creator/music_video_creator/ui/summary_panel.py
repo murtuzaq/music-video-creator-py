@@ -3,11 +3,25 @@ from tkinter import ttk
 
 
 class SummaryPanel:
-    def __init__(self, parent):
+    def __init__(self, parent, on_generate):
         self.audio_var = tk.StringVar(value="—")
         self.images_var = tk.StringVar(value="0")
         self.points_var = tk.StringVar(value="0 / 0")
         self.output_var = tk.StringVar(value="—")
+
+        self.generate_btn = tk.Button(
+            parent,
+            text="▶  Generate Video",
+            command=on_generate,
+            bg="#e05c00",
+            fg="white",
+            font=("Helvetica", 11, "bold"),
+            relief=tk.FLAT,
+            padx=16,
+            pady=8,
+            state=tk.DISABLED
+        )
+        self.generate_btn.pack(fill=tk.X, padx=14, pady=(20, 8))
 
         self.__build(parent)
 
@@ -42,3 +56,15 @@ class SummaryPanel:
         tk.Label(frame, text=label, bg="#1e1e1e", fg="#aaa", anchor="w", width=12).pack(side=tk.LEFT)
         tk.Label(frame, textvariable=var, bg="#1e1e1e", fg="white", anchor="w",
                  wraplength=140, justify=tk.LEFT).pack(side=tk.LEFT)
+        
+    def set_generate_enabled(self, enabled):
+        if enabled:
+            self.generate_btn.config(state=tk.NORMAL)
+        else:
+            self.generate_btn.config(state=tk.DISABLED)
+
+    def set_generating(self, generating):
+        if generating:
+            self.generate_btn.config(state=tk.DISABLED, text="Generating…")
+        else:
+            self.generate_btn.config(text="▶  Generate Video")
