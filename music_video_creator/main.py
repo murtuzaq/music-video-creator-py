@@ -16,7 +16,7 @@ from music_video_creator.ui.main_layout import MainLayout
 from music_video_creator.ui.main_notebook import MainNotebook
 from music_video_creator.ui.lyrics_tab import LyricsTab
 from music_video_creator.ui.image_timing_tab import ImageTimingTab
-from music_video_creator.ui.image_row import ImageRow
+from music_video_creator.ui.image_list import ImageList
 
 class MusicVideoCreator(tk.Tk):
     def __init__(self):
@@ -73,11 +73,20 @@ class MusicVideoCreator(tk.Tk):
     def _build_images_tab(self, parent):
         self.image_timing_tab = ImageTimingTab(parent, self._add_image)
         self.image_list_frame = self.image_timing_tab.get_image_list_frame()
-        self._update_empty_label()
+
+        self.image_list = ImageList(
+            self.image_list_frame,
+            self.state,
+            self._on_image_list_changed
+        )
 
     def _build_lyrics_tab(self, parent):
         self.lyrics_tab = LyricsTab(parent, self._clear_switch_points)
         self.lyrics_text = self.lyrics_tab.get_text_widget()
+
+    def _on_image_list_changed(self):
+        self._refresh_summary()
+        self._update_switch_counter()
 
     # ─────────────────────────────────────────────────────────────
     # Summary panel + Bottom bar (unchanged)
@@ -301,61 +310,8 @@ class MusicVideoCreator(tk.Tk):
         self.lyrics_tab.set_counter_text(msg)
         self.summary_panel.set_points(have, needed)
 
-    def _update_empty_label(self):
-        for w in self.image_list_frame.winfo_children():
-            if getattr(w, "_is_empty_label", False):
-                w.destroy()
-        if not self.state.image_entries:
-            lbl = tk.Label(self.image_list_frame, text='Click "+ Add Image" to add images.', fg="gray", pady=20)
-            lbl._is_empty_label = True
-            lbl.pack()
-
     def _add_image(self):
-        paths = filedialog.askopenfilenames(
-            title="Select image(s)",
-            filetypes=[("Image files", "*.png *.jpg *.jpeg *.bmp *.gif"), ("All files", "*.*")]
-        )
-        for path in paths:
-            self._add_image_row(path)
-        self._refresh_first_row()
-        self._refresh_summary()
-        self._update_switch_counter()
-
-    def _add_image_row(self, path):
-        default_load = 3.0 * len(self.state.image_entries)
-        load_var = tk.DoubleVar(value=default_load)
-
-        entry = {
-            "path": path,
-            "load_var": load_var,
-            "row": None
-        }
-
-        def remove():
-            self.state.image_entries.remove(entry)
-            entry["row"].destroy()
-            self._update_empty_label()
-            self._refresh_first_row()
-            self._refresh_summary()
-            self._update_switch_counter()
-
-        entry["row"] = ImageRow(
-            self.image_list_frame,
-            path,
-            load_var,
-            remove,
-            self._refresh_summary
-        )
-
-        self.state.image_entries.append(entry)
-        self._update_empty_label()
-
-    def _refresh_first_row(self):
-        for i, entry in enumerate(self.state.image_entries):
-            if i == 0:
-                entry["row"].show_first_mode()
-            else:
-                entry["row"].show_timed_mode()
+        self.image_list.add_images_from_dialog()
 
     def _refresh_summary(self):
         self.summary_panel.set_images(len(self.state.image_entries))
