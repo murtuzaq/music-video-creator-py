@@ -11,7 +11,7 @@ from music_video_creator.services.lyric_file_loader import LyricFileLoader
 from music_video_creator.services.lyric_aligner import LyricAligner
 from music_video_creator.ui.summary_panel import SummaryPanel
 from music_video_creator.ui.bottom_bar import BottomBar
-
+from music_video_creator.ui.audio_section import AudioSection
 
 class MusicVideoCreator(tk.Tk):
     def __init__(self):
@@ -61,30 +61,12 @@ class MusicVideoCreator(tk.Tk):
     # Audio section
     # ─────────────────────────────────────────────────────────────
     def _section_audio(self, parent):
-        frame = tk.LabelFrame(parent, text=" 1. Audio File ", font=("Helvetica", 10, "bold"), padx=8, pady=6)
-        frame.pack(fill=tk.X)
-
-        row = tk.Frame(frame)
-        row.pack(fill=tk.X)
-
-        self.audio_label = tk.Label(row, text="No file selected", fg="gray", anchor="w")
-        self.audio_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
-
-        self.transcribe_btn = tk.Button(
-            row, text="🎤 Transcribe Lyrics", command=self._start_transcription,
-            bg="#7b5ea7", fg="white", relief=tk.FLAT, padx=8, state=tk.DISABLED
+        self.audio_section = AudioSection(
+            parent,
+            self._pick_audio,
+            self._pick_lyrics,
+            self._start_transcription
         )
-        self.transcribe_btn.pack(side=tk.RIGHT, padx=(4, 0))
-
-        tk.Button(
-            row, text="📄 Load Lyrics", command=self._pick_lyrics,
-            bg="#9b59b6", fg="white", relief=tk.FLAT, padx=8
-        ).pack(side=tk.RIGHT, padx=4)
-
-        tk.Button(
-            row, text="Browse…", command=self._pick_audio,
-            bg="#4a90d9", fg="white", relief=tk.FLAT, padx=10
-        ).pack(side=tk.RIGHT)
 
     # ─────────────────────────────────────────────────────────────
     # Notebook
@@ -189,10 +171,10 @@ class MusicVideoCreator(tk.Tk):
         if path:
             self.state.audio_path = path
             name = os.path.basename(path)
-            self.audio_label.config(text=name, fg="black")
+            self.audio_section.set_audio_name(name)
             self.summary_panel.set_audio(name)
             self.bottom_bar.set_status(f"Audio loaded: {name}")
-            self.transcribe_btn.config(state=tk.NORMAL)
+            self.audio_section.set_transcribe_enabled(True)
 
     def _pick_lyrics(self):
         """Load lyrics from text file and optionally align to audio"""
@@ -236,7 +218,8 @@ class MusicVideoCreator(tk.Tk):
     def _start_transcription(self):
         if not self.state.audio_path:
             return
-        self.transcribe_btn.config(state=tk.DISABLED, text="Transcribing…")
+        self.audio_section.set_transcribe_enabled(False)
+        self.audio_section.set_transcribe_text("Transcribing…")
         self.bottom_bar.set_progress(True)
         self.bottom_bar.set_status("Transcribing audio...")
         threading.Thread(target=self._run_transcription, daemon=True).start()
@@ -254,7 +237,8 @@ class MusicVideoCreator(tk.Tk):
         self.state.transcription_words = words
         self.state.switch_points = []
         self.bottom_bar.set_progress(False)
-        self.transcribe_btn.config(state=tk.NORMAL, text="🎤 Re-transcribe")
+        self.audio_section.set_transcribe_enabled(True)
+        self.audio_section.set_transcribe_text("🎤 Re-transcribe")
         self.bottom_bar.set_status(f"Transcription complete — {len(words)} words found.")
         self._render_lyrics()
         self.notebook.tab(self.tab_lyrics, state="normal")
@@ -263,7 +247,8 @@ class MusicVideoCreator(tk.Tk):
 
     def _on_transcription_error(self, msg):
         self.bottom_bar.set_progress(False)
-        self.transcribe_btn.config(state=tk.NORMAL, text="🎤 Transcribe Lyrics")
+        self.audio_section.set_transcribe_enabled(True)
+        self.audio_section.set_transcribe_text("🎤 Transcribe Lyrics")
         self.bottom_bar.set_status("Transcription failed.")
         messagebox.showerror("Transcription failed", f"Error:\n\n{msg}")
 
@@ -287,7 +272,7 @@ class MusicVideoCreator(tk.Tk):
 
         except Exception as exc:
             self.after(0, lambda e=exc: messagebox.showerror("Alignment Failed", str(e)))
-            self.after(0, self._set_progress, False)
+            self.after(0, self.bottom_bar.set_progress, False)
 
     def _on_alignment_done(self, aligned_words):
         self.state.transcription_words = aligned_words
@@ -496,6 +481,7 @@ class MusicVideoCreator(tk.Tk):
             return
 
         self.summary_panel.set_output(os.path.basename(out_path))
+        self.state.generating = True
         self.bottom_bar.set_generating(True)
 
         jobs = [(self.state.image_entries[0]["path"], None)]
@@ -512,35 +498,16 @@ class MusicVideoCreator(tk.Tk):
             self.after(0, self._on_error, str(exc))
 
     def _on_success(self, out_path):
+        self.state.generating = False
         self.bottom_bar.set_generating(False)
         self.bottom_bar.set_status(f"Done! Saved to: {out_path}")
         messagebox.showinfo("Success", f"Video saved to:\n\n{out_path}")
 
     def _on_error(self, message):
+        self.state.generating = False
         self.bottom_bar.set_generating(False)
         self.bottom_bar.set_status("Generation failed.")
         messagebox.showerror("Error", message)
-
-    def _set_generating(self, state: bool):
-        self.state.generating = state
-        if state:
-            self.generate_btn.config(state=tk.DISABLED, text="Generating…")
-            self.bottom_bar.set_progress(True)
-        else:
-            self.generate_btn.config(state=tk.NORMAL, text="▶  Generate Video")
-            self.bottom_bar.set_progress(False)
-
-    def _set_progress(self, running: bool):
-        if running:
-            self.progress.pack(side=tk.LEFT, padx=16, pady=4)
-            self.progress.start(12)
-        else:
-            self.progress.stop()
-            self.progress.pack_forget()
-
-    def _set_status(self, msg: str):
-        self.after(0, lambda: self.status_var.set(msg))
-
 
 if __name__ == "__main__":
     app = MusicVideoCreator()
