@@ -16,6 +16,7 @@ from music_video_creator.ui.header_bar import HeaderBar
 from music_video_creator.ui.main_layout import MainLayout
 from music_video_creator.ui.main_notebook import MainNotebook
 from music_video_creator.ui.lyrics_tab import LyricsTab
+from music_video_creator.ui.image_timing_tab import ImageTimingTab
 
 class MusicVideoCreator(tk.Tk):
     def __init__(self):
@@ -70,38 +71,8 @@ class MusicVideoCreator(tk.Tk):
         self._build_lyrics_tab(self.main_notebook.lyrics_tab)
 
     def _build_images_tab(self, parent):
-        header = tk.Frame(parent)
-        header.pack(fill=tk.X, pady=(6, 2))
-
-        tk.Label(header, text=" 2. Images & Timing", font=("Helvetica", 10, "bold")).pack(side=tk.LEFT)
-        tk.Button(
-            header, text="+ Add Image", command=self._add_image,
-            bg="#5cb85c", fg="white", relief=tk.FLAT, padx=8
-        ).pack(side=tk.RIGHT)
-
-        tk.Label(
-            parent,
-            text='Image 1 always plays first. Each subsequent image has a "Load in" time (seconds into the audio).',
-            fg="#888", font=("Helvetica", 8), anchor="w"
-        ).pack(fill=tk.X, padx=4)
-
-        container = tk.Frame(parent, relief=tk.SUNKEN, bd=1)
-        container.pack(fill=tk.BOTH, expand=True, pady=(4, 0))
-
-        canvas = tk.Canvas(container, highlightthickness=0)
-        scrollbar = ttk.Scrollbar(container, orient="vertical", command=canvas.yview)
-        self.image_list_frame = tk.Frame(canvas)
-
-        self.image_list_frame.bind(
-            "<Configure>",
-            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
-        )
-
-        canvas.create_window((0, 0), window=self.image_list_frame, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
-        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-
+        self.image_timing_tab = ImageTimingTab(parent, self._add_image)
+        self.image_list_frame = self.image_timing_tab.get_image_list_frame()
         self._update_empty_label()
 
     def _build_lyrics_tab(self, parent):
