@@ -17,6 +17,7 @@ from music_video_creator.ui.main_notebook import MainNotebook
 from music_video_creator.ui.lyrics_tab import LyricsTab
 from music_video_creator.ui.image_timing_tab import ImageTimingTab
 from music_video_creator.ui.image_list import ImageList
+from music_video_creator.ui.lyrics_controller import LyricsController
 
 class MusicVideoCreator(tk.Tk):
     def __init__(self):
@@ -82,7 +83,15 @@ class MusicVideoCreator(tk.Tk):
 
     def _build_lyrics_tab(self, parent):
         self.lyrics_tab = LyricsTab(parent, self._clear_switch_points)
-        self.lyrics_text = self.lyrics_tab.get_text_widget()
+        self.lyrics_controller = LyricsController(
+            self.lyrics_tab,
+            self.state,
+            self._on_lyrics_changed
+        )
+
+    def _on_lyrics_changed(self):
+        self._update_switch_counter()
+        self._refresh_summary()
 
     def _on_image_list_changed(self):
         self._refresh_summary()
@@ -136,7 +145,7 @@ class MusicVideoCreator(tk.Tk):
 
             self.state.switch_points = []
             self.bottom_bar.set_status(f"Loaded {len(self.state.transcription_words)} words from: {os.path.basename(path)}")
-            self._render_lyrics()
+            self.lyrics_controller.render()
             self.main_notebook.enable_lyrics_tab()
             self.main_notebook.select_lyrics_tab()
             self._update_switch_counter()
@@ -178,7 +187,7 @@ class MusicVideoCreator(tk.Tk):
         self.audio_section.set_transcribe_enabled(True)
         self.audio_section.set_transcribe_text("🎤 Re-transcribe")
         self.bottom_bar.set_status(f"Transcription complete — {len(words)} words found.")
-        self._render_lyrics()
+        self.lyrics_controller.render()
         self.main_notebook.enable_lyrics_tab()
         self.main_notebook.select_lyrics_tab()
         self._update_switch_counter()
@@ -215,86 +224,15 @@ class MusicVideoCreator(tk.Tk):
     def _on_alignment_done(self, aligned_words):
         self.state.transcription_words = aligned_words
         self.bottom_bar.set_progress(False)
-        self._render_lyrics()
+        self.lyrics_controller.render()
         self.bottom_bar.set_status(f"Lyrics aligned successfully — {len(aligned_words)} words")
         self._update_switch_counter()
 
     # ─────────────────────────────────────────────────────────────
     # Rest of the code (lyrics interaction, images, generation, etc.)
     # ─────────────────────────────────────────────────────────────
-    def _render_lyrics(self):
-        txt = self.lyrics_text
-        txt.config(state=tk.NORMAL)
-        txt.delete("1.0", tk.END)
-
-        prev_end = -1
-        for i, w in enumerate(self.state.transcription_words):
-            if prev_end >= 0 and w["start"] - prev_end > 2.0:
-                txt.insert(tk.END, "\n\n")
-
-            tag_name = f"w{i}"
-            txt.insert(tk.END, w["text"] + " ", ("word", tag_name))
-            txt.tag_bind(tag_name, "<Button-1>", lambda e, idx=i: self._toggle_word(idx))
-            txt.tag_bind(tag_name, "<Enter>",    lambda e, idx=i: self._hover_word(idx, True))
-            txt.tag_bind(tag_name, "<Leave>",    lambda e, idx=i: self._hover_word(idx, False))
-            prev_end = w["end"]
-
-        txt.config(state=tk.DISABLED)
-
-    def _toggle_word(self, idx):
-        ts  = self.state.transcription_words[idx]["start"]
-        tag = f"w{idx}"
-
-        if ts in self.state.switch_points:
-            self.state.switch_points.remove(ts)
-            self._set_word_style(tag, False)
-        else:
-            needed = max(0, len(self.state.image_entries) - 1)
-            if needed > 0 and len(self.state.switch_points) >= needed:
-                messagebox.showinfo("Enough load points", 
-                    f"You already have {needed} load point(s). Remove one first.")
-                return
-            self.state.switch_points.append(ts)
-            self.state.switch_points.sort()
-            self._set_word_style(tag, True)
-
-        self._update_switch_counter()
-        self._apply_switch_points()
-
-    def _hover_word(self, idx, entering):
-        tag = f"w{idx}"
-        txt = self.lyrics_text
-        txt.config(state=tk.NORMAL)
-        if entering and self.state.transcription_words[idx]["start"] not in self.state.switch_points:
-            txt.tag_add("hover", f"{tag}.first", f"{tag}.last")
-        else:
-            txt.tag_remove("hover", "1.0", tk.END)
-        txt.config(state=tk.DISABLED)
-
-    def _set_word_style(self, tag, selected):
-        txt = self.lyrics_text
-        txt.config(state=tk.NORMAL)
-        if selected:
-            txt.tag_add("switch", f"{tag}.first", f"{tag}.last")
-        else:
-            txt.tag_remove("switch", f"{tag}.first", f"{tag}.last")
-        txt.config(state=tk.DISABLED)
-
     def _clear_switch_points(self):
-        self.state.switch_points.clear()
-        txt = self.lyrics_text
-        txt.config(state=tk.NORMAL)
-        txt.tag_remove("switch", "1.0", tk.END)
-        txt.config(state=tk.DISABLED)
-        self._update_switch_counter()
-        self._apply_switch_points()
-
-    def _apply_switch_points(self):
-        pts = sorted(self.state.switch_points)
-        for i, entry in enumerate(self.state.image_entries[1:]):
-            if i < len(pts):
-                entry["load_var"].set(round(pts[i], 2))
-        self._refresh_summary()
+        self.lyrics_controller.clear_switch_points()
 
     def _update_switch_counter(self):
         needed = max(0, len(self.state.image_entries) - 1)
