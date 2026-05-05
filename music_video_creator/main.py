@@ -7,6 +7,7 @@ import threading
 from music_video_creator.app_state import AppState
 from music_video_creator.services.video_generator import VideoGenerator
 from music_video_creator.services.audio_transcriber import AudioTranscriber
+from music_video_creator.services.lyric_file_loader import LyricFileLoader
 
 
 class MusicVideoCreator(tk.Tk):
@@ -19,6 +20,7 @@ class MusicVideoCreator(tk.Tk):
         self.state = AppState()
         self.video_generator = VideoGenerator(self._set_status)
         self.audio_transcriber = AudioTranscriber()
+        self.lyric_file_loader = LyricFileLoader()
 
         self._build_ui()
 
@@ -238,35 +240,14 @@ class MusicVideoCreator(tk.Tk):
             return
 
         try:
-            with open(path, "r", encoding="utf-8") as f:
-                raw = f.read()
+            self.state.transcription_words = self.lyric_file_loader.load(path)
 
-            # Split into words
-            lines = [line.strip() for line in raw.splitlines() if line.strip()]
-            words = []
-            for line in lines:
-                for w in line.split():
-                    clean = w.strip('.,!?()[]{}"\'').strip()
-                    if clean:
-                        words.append(clean)
-
-            if not words:
+            if not self.state.transcription_words:
                 messagebox.showwarning("Empty lyrics", "No words found in the file.")
                 return
 
-            # Create placeholder transcription
-            self.state.transcription_words = []
-            current_time = 0.0
-            for w in words:
-                self.state.transcription_words.append({
-                    "text": w,
-                    "start": round(current_time, 2),
-                    "end": round(current_time + 0.4, 2)
-                })
-                current_time += 0.5
-
             self.state.switch_points = []
-            self._set_status(f"Loaded {len(words)} words from: {os.path.basename(path)}")
+            self._set_status(f"Loaded {len(self.state.transcription_words)} words from: {os.path.basename(path)}")
             self._render_lyrics()
             self.notebook.tab(self.tab_lyrics, state="normal")
             self.notebook.select(self.tab_lyrics)
