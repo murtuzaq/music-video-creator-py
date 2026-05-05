@@ -4,6 +4,9 @@ from PIL import Image, ImageTk
 import os
 import threading
 
+from music_video_creator.app_state import AppState
+from music_video_creator.services.video_generator import VideoGenerator
+
 
 class MusicVideoCreator(tk.Tk):
     def __init__(self):
@@ -12,12 +15,8 @@ class MusicVideoCreator(tk.Tk):
         self.geometry("1000x700")
         self.resizable(True, True)
 
-        self.audio_path = None
-        self.image_entries = []
-        self._generating = False
-
-        self.transcription_words = []
-        self.switch_points = []   # absolute timestamps selected in lyrics
+        self.state = AppState()
+        self.video_generator = VideoGenerator(self._set_status)
 
         self._build_ui()
 
@@ -216,7 +215,7 @@ class MusicVideoCreator(tk.Tk):
             filetypes=[("Audio files", "*.mp3 *.wav *.aac *.ogg *.flac"), ("All files", "*.*")]
         )
         if path:
-            self.audio_path = path
+            self.state.audio_path = path
             name = os.path.basename(path)
             self.audio_label.config(text=name, fg="black")
             self.sv_audio.set(name)
@@ -225,7 +224,7 @@ class MusicVideoCreator(tk.Tk):
 
     def _pick_lyrics(self):
         """Load lyrics from text file and optionally align to audio"""
-        if not self.audio_path:
+        if not self.state.audio_path:
             messagebox.showwarning("No Audio", "Please load an audio file first.")
             return
 
@@ -254,17 +253,17 @@ class MusicVideoCreator(tk.Tk):
                 return
 
             # Create placeholder transcription
-            self.transcription_words = []
+            self.state.transcription_words = []
             current_time = 0.0
             for w in words:
-                self.transcription_words.append({
+                self.state.transcription_words.append({
                     "text": w,
                     "start": round(current_time, 2),
                     "end": round(current_time + 0.4, 2)
                 })
                 current_time += 0.5
 
-            self.switch_points = []
+            self.state.switch_points = []
             self._set_status(f"Loaded {len(words)} words from: {os.path.basename(path)}")
             self._render_lyrics()
             self.notebook.tab(self.tab_lyrics, state="normal")
@@ -284,7 +283,7 @@ class MusicVideoCreator(tk.Tk):
     # Transcription (original)
     # ─────────────────────────────────────────────────────────────
     def _start_transcription(self):
-        if not self.audio_path:
+        if not self.state.audio_path:
             return
         self.transcribe_btn.config(state=tk.DISABLED, text="Transcribing…")
         self._set_progress(True)
@@ -301,7 +300,7 @@ class MusicVideoCreator(tk.Tk):
             self.after(0, lambda: self._set_status("Loading Whisper model…"))
             model = whisper.load_model("base")
             self.after(0, lambda: self._set_status("Transcribing…"))
-            result = model.transcribe(self.audio_path, word_timestamps=True)
+            result = model.transcribe(self.state.audio_path, word_timestamps=True)
 
             words = []
             for seg in result.get("segments", []):
@@ -316,8 +315,8 @@ class MusicVideoCreator(tk.Tk):
             self.after(0, self._on_transcription_error, str(exc))
 
     def _on_transcription_done(self, words):
-        self.transcription_words = words
-        self.switch_points = []
+        self.state.transcription_words = words
+        self.state.switch_points = []
         self._set_progress(False)
         self.transcribe_btn.config(state=tk.NORMAL, text="🎤 Re-transcribe")
         self._set_status(f"Transcription complete — {len(words)} words found.")
@@ -336,7 +335,7 @@ class MusicVideoCreator(tk.Tk):
     # Lyrics Alignment
     # ─────────────────────────────────────────────────────────────
     def _align_lyrics_to_audio(self):
-        if not self.audio_path or not self.transcription_words:
+        if not self.state.audio_path or not self.state.transcription_words:
             return
         self._set_progress(True)
         self._set_status("Aligning lyrics to audio...")
@@ -347,7 +346,7 @@ class MusicVideoCreator(tk.Tk):
             import whisper
             model = whisper.load_model("base")
             
-            result = model.transcribe(self.audio_path, word_timestamps=True)
+            result = model.transcribe(self.state.audio_path, word_timestamps=True)
             
             trans_words = []
             for seg in result.get("segments", []):
@@ -363,7 +362,7 @@ class MusicVideoCreator(tk.Tk):
             # Match provided lyrics to real transcription
             aligned = []
             t_idx = 0
-            for orig in self.transcription_words:
+            for orig in self.state.transcription_words:
                 orig_lower = orig["text"].lower()
                 best_match = None
                 best_score = -1
@@ -398,7 +397,7 @@ class MusicVideoCreator(tk.Tk):
         return len(set_a & set_b) / max(len(set_a), len(set_b))
 
     def _on_alignment_done(self, aligned_words):
-        self.transcription_words = aligned_words
+        self.state.transcription_words = aligned_words
         self._set_progress(False)
         self._render_lyrics()
         self._set_status(f"Lyrics aligned successfully — {len(aligned_words)} words")
@@ -413,7 +412,7 @@ class MusicVideoCreator(tk.Tk):
         txt.delete("1.0", tk.END)
 
         prev_end = -1
-        for i, w in enumerate(self.transcription_words):
+        for i, w in enumerate(self.state.transcription_words):
             if prev_end >= 0 and w["start"] - prev_end > 2.0:
                 txt.insert(tk.END, "\n\n")
 
@@ -427,20 +426,20 @@ class MusicVideoCreator(tk.Tk):
         txt.config(state=tk.DISABLED)
 
     def _toggle_word(self, idx):
-        ts  = self.transcription_words[idx]["start"]
+        ts  = self.state.transcription_words[idx]["start"]
         tag = f"w{idx}"
 
-        if ts in self.switch_points:
-            self.switch_points.remove(ts)
+        if ts in self.state.switch_points:
+            self.state.switch_points.remove(ts)
             self._set_word_style(tag, False)
         else:
-            needed = max(0, len(self.image_entries) - 1)
-            if needed > 0 and len(self.switch_points) >= needed:
+            needed = max(0, len(self.state.image_entries) - 1)
+            if needed > 0 and len(self.state.switch_points) >= needed:
                 messagebox.showinfo("Enough load points", 
                     f"You already have {needed} load point(s). Remove one first.")
                 return
-            self.switch_points.append(ts)
-            self.switch_points.sort()
+            self.state.switch_points.append(ts)
+            self.state.switch_points.sort()
             self._set_word_style(tag, True)
 
         self._update_switch_counter()
@@ -450,7 +449,7 @@ class MusicVideoCreator(tk.Tk):
         tag = f"w{idx}"
         txt = self.lyrics_text
         txt.config(state=tk.NORMAL)
-        if entering and self.transcription_words[idx]["start"] not in self.switch_points:
+        if entering and self.state.transcription_words[idx]["start"] not in self.state.switch_points:
             txt.tag_add("hover", f"{tag}.first", f"{tag}.last")
         else:
             txt.tag_remove("hover", "1.0", tk.END)
@@ -466,7 +465,7 @@ class MusicVideoCreator(tk.Tk):
         txt.config(state=tk.DISABLED)
 
     def _clear_switch_points(self):
-        self.switch_points.clear()
+        self.state.switch_points.clear()
         txt = self.lyrics_text
         txt.config(state=tk.NORMAL)
         txt.tag_remove("switch", "1.0", tk.END)
@@ -475,15 +474,15 @@ class MusicVideoCreator(tk.Tk):
         self._apply_switch_points()
 
     def _apply_switch_points(self):
-        pts = sorted(self.switch_points)
-        for i, entry in enumerate(self.image_entries[1:]):
+        pts = sorted(self.state.switch_points)
+        for i, entry in enumerate(self.state.image_entries[1:]):
             if i < len(pts):
                 entry["load_var"].set(round(pts[i], 2))
         self._refresh_summary()
 
     def _update_switch_counter(self):
-        needed = max(0, len(self.image_entries) - 1)
-        have   = len(self.switch_points)
+        needed = max(0, len(self.state.image_entries) - 1)
+        have   = len(self.state.switch_points)
         if needed == 0:
             msg = "Add images, then click words to set load times."
         elif have < needed:
@@ -499,7 +498,7 @@ class MusicVideoCreator(tk.Tk):
         for w in self.image_list_frame.winfo_children():
             if getattr(w, "_is_empty_label", False):
                 w.destroy()
-        if not self.image_entries:
+        if not self.state.image_entries:
             lbl = tk.Label(self.image_list_frame, text='Click "+ Add Image" to add images.', fg="gray", pady=20)
             lbl._is_empty_label = True
             lbl.pack()
@@ -516,9 +515,9 @@ class MusicVideoCreator(tk.Tk):
         self._update_switch_counter()
 
     def _add_image_row(self, path):
-        default_load = 3.0 * len(self.image_entries)
+        default_load = 3.0 * len(self.state.image_entries)
         entry = {"path": path, "load_var": tk.DoubleVar(value=default_load)}
-        self.image_entries.append(entry)
+        self.state.image_entries.append(entry)
 
         row = tk.Frame(self.image_list_frame, relief=tk.RIDGE, bd=1, padx=6, pady=4)
         row.pack(fill=tk.X, padx=4, pady=2)
@@ -537,7 +536,7 @@ class MusicVideoCreator(tk.Tk):
         tk.Label(row, text=name, anchor="w", wraplength=220).pack(side=tk.LEFT, fill=tk.X, expand=True)
 
         def remove(e=entry, r=row):
-            self.image_entries.remove(e)
+            self.state.image_entries.remove(e)
             r.destroy()
             self._update_empty_label()
             self._refresh_first_row()
@@ -565,7 +564,7 @@ class MusicVideoCreator(tk.Tk):
         self._update_empty_label()
 
     def _refresh_first_row(self):
-        for i, entry in enumerate(self.image_entries):
+        for i, entry in enumerate(self.state.image_entries):
             if i == 0:
                 entry["load_inner"].pack_forget()
                 entry["first_lbl"].pack()
@@ -574,21 +573,21 @@ class MusicVideoCreator(tk.Tk):
                 entry["load_inner"].pack()
 
     def _refresh_summary(self):
-        self.sv_images.set(str(len(self.image_entries)))
+        self.sv_images.set(str(len(self.state.image_entries)))
 
     # Video generation methods (unchanged - _generate_video, _run_generation, etc.)
     def _generate_video(self):
-        if self._generating:
+        if self.state.generating:
             return
-        if not self.audio_path:
+        if not self.state.audio_path:
             messagebox.showwarning("Missing audio", "Please select an audio file first.")
             return
-        if not self.image_entries:
+        if not self.state.image_entries:
             messagebox.showwarning("No images", "Please add at least one image.")
             return
 
-        if len(self.image_entries) > 1:
-            load_times = [e["load_var"].get() for e in self.image_entries[1:]]
+        if len(self.state.image_entries) > 1:
+            load_times = [e["load_var"].get() for e in self.state.image_entries[1:]]
             for i in range(1, len(load_times)):
                 if load_times[i] <= load_times[i - 1]:
                     messagebox.showerror("Invalid load times", 
@@ -606,45 +605,16 @@ class MusicVideoCreator(tk.Tk):
         self.sv_output.set(os.path.basename(out_path))
         self._set_generating(True)
 
-        jobs = [(self.image_entries[0]["path"], None)]
-        for e in self.image_entries[1:]:
+        jobs = [(self.state.image_entries[0]["path"], None)]
+        for e in self.state.image_entries[1:]:
             jobs.append((e["path"], e["load_var"].get()))
 
-        threading.Thread(target=self._run_generation, args=(jobs, self.audio_path, out_path), daemon=True).start()
+        threading.Thread(target=self._run_generation, args=(jobs, self.state.audio_path, out_path), daemon=True).start()
 
     def _run_generation(self, jobs, audio_path, out_path):
         try:
-            from moviepy import ImageClip, AudioFileClip, concatenate_videoclips
-            audio = AudioFileClip(audio_path)
-            audio_duration = audio.duration
-
-            load_times = [0.0] + [lt for _, lt in jobs[1:]]
-            if load_times[-1] >= audio_duration:
-                raise ValueError("Last image load time is after audio end.")
-
-            durations = []
-            for i in range(len(load_times)):
-                if i < len(load_times) - 1:
-                    durations.append(load_times[i + 1] - load_times[i])
-                else:
-                    durations.append(audio_duration - load_times[i])
-
-            clips = []
-            for i, ((img_path, _), duration) in enumerate(zip(jobs, durations), 1):
-                self._set_status(f"Processing image {i}/{len(jobs)}...")
-                clip = ImageClip(img_path, duration=duration).with_fps(24)
-                clips.append(clip)
-
-            video = concatenate_videoclips(clips, method="compose")
-            if audio.duration > video.duration:
-                audio = audio.subclipped(0, video.duration)
-            video = video.with_audio(audio)
-
-            self._set_status("Rendering video...")
-            video.write_videofile(out_path, codec="libx264", audio_codec="aac", fps=24, logger=None)
-
+            self.video_generator.generate(jobs, audio_path, out_path)
             self.after(0, self._on_success, out_path)
-
         except Exception as exc:
             self.after(0, self._on_error, str(exc))
 
@@ -659,7 +629,7 @@ class MusicVideoCreator(tk.Tk):
         messagebox.showerror("Error", message)
 
     def _set_generating(self, state: bool):
-        self._generating = state
+        self.state.generating = state
         if state:
             self.generate_btn.config(state=tk.DISABLED, text="Generating…")
             self._set_progress(True)
