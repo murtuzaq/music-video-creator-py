@@ -14,6 +14,7 @@ from music_video_creator.ui.bottom_bar import BottomBar
 from music_video_creator.ui.audio_section import AudioSection
 from music_video_creator.ui.header_bar import HeaderBar
 from music_video_creator.ui.main_layout import MainLayout
+from music_video_creator.ui.main_notebook import MainNotebook
 
 class MusicVideoCreator(tk.Tk):
     def __init__(self):
@@ -59,18 +60,14 @@ class MusicVideoCreator(tk.Tk):
     # Notebook
     # ─────────────────────────────────────────────────────────────
     def _build_notebook(self, parent):
-        self.notebook = ttk.Notebook(parent)
-        self.notebook.pack(fill=tk.BOTH, expand=True)
+        self.main_notebook = MainNotebook(parent)
 
-        tab_images = tk.Frame(self.notebook)
-        self.notebook.add(tab_images, text="  🖼  Images & Timing  ")
-        self._build_images_tab(tab_images)
+        self.notebook = self.main_notebook.notebook
+        self.tab_lyrics = self.main_notebook.lyrics_tab
 
-        self.tab_lyrics = tk.Frame(self.notebook)
-        self.notebook.add(self.tab_lyrics, text="  🎤  Lyrics  ", state="disabled")
-        self._build_lyrics_tab(self.tab_lyrics)
+        self._build_images_tab(self.main_notebook.images_tab)
+        self._build_lyrics_tab(self.main_notebook.lyrics_tab)
 
-    # (rest of UI methods unchanged - _build_images_tab, _build_lyrics_tab, etc.)
     def _build_images_tab(self, parent):
         header = tk.Frame(parent)
         header.pack(fill=tk.X, pady=(6, 2))
@@ -186,8 +183,8 @@ class MusicVideoCreator(tk.Tk):
             self.state.switch_points = []
             self.bottom_bar.set_status(f"Loaded {len(self.state.transcription_words)} words from: {os.path.basename(path)}")
             self._render_lyrics()
-            self.notebook.tab(self.tab_lyrics, state="normal")
-            self.notebook.select(self.tab_lyrics)
+            self.main_notebook.enable_lyrics_tab()
+            self.main_notebook.select_lyrics_tab()
             self._update_switch_counter()
 
             # Ask to align
@@ -228,8 +225,8 @@ class MusicVideoCreator(tk.Tk):
         self.audio_section.set_transcribe_text("🎤 Re-transcribe")
         self.bottom_bar.set_status(f"Transcription complete — {len(words)} words found.")
         self._render_lyrics()
-        self.notebook.tab(self.tab_lyrics, state="normal")
-        self.notebook.select(self.tab_lyrics)
+        self.main_notebook.enable_lyrics_tab()
+        self.main_notebook.select_lyrics_tab()
         self._update_switch_counter()
 
     def _on_transcription_error(self, msg):
