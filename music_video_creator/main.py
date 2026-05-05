@@ -12,6 +12,7 @@ from music_video_creator.services.lyric_aligner import LyricAligner
 from music_video_creator.ui.summary_panel import SummaryPanel
 from music_video_creator.ui.bottom_bar import BottomBar
 from music_video_creator.ui.audio_section import AudioSection
+from music_video_creator.ui.header_bar import HeaderBar
 
 class MusicVideoCreator(tk.Tk):
     def __init__(self):
@@ -33,13 +34,7 @@ class MusicVideoCreator(tk.Tk):
     # UI bootstrap
     # ─────────────────────────────────────────────────────────────
     def _build_ui(self):
-        top = tk.Frame(self, bg="#2b2b2b", pady=8)
-        top.pack(fill=tk.X)
-        tk.Label(
-            top, text="🎬 Music Video Creator",
-            font=("Helvetica", 16, "bold"),
-            bg="#2b2b2b", fg="white"
-        ).pack(side=tk.LEFT, padx=16)
+        self.header_bar = HeaderBar(self)
 
         content = tk.Frame(self)
         content.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
