@@ -15,6 +15,7 @@ from music_video_creator.ui.audio_section import AudioSection
 from music_video_creator.ui.header_bar import HeaderBar
 from music_video_creator.ui.main_layout import MainLayout
 from music_video_creator.ui.main_notebook import MainNotebook
+from music_video_creator.ui.lyrics_tab import LyricsTab
 
 class MusicVideoCreator(tk.Tk):
     def __init__(self):
@@ -104,35 +105,8 @@ class MusicVideoCreator(tk.Tk):
         self._update_empty_label()
 
     def _build_lyrics_tab(self, parent):
-        bar = tk.Frame(parent, bg="#2b2b2b", pady=4)
-        bar.pack(fill=tk.X)
-
-        self.counter_var = tk.StringVar(value="Load audio and click 'Transcribe Lyrics' or 'Load Lyrics' to begin.")
-        tk.Label(bar, textvariable=self.counter_var, bg="#2b2b2b", fg="#ddd",
-                 font=("Helvetica", 9)).pack(side=tk.LEFT, padx=10)
-
-        tk.Button(
-            bar, text="Clear all", command=self._clear_switch_points,
-            bg="#555", fg="white", relief=tk.FLAT, padx=8
-        ).pack(side=tk.RIGHT, padx=8)
-
-        text_frame = tk.Frame(parent)
-        text_frame.pack(fill=tk.BOTH, expand=True, pady=(4, 0))
-
-        self.lyrics_text = tk.Text(
-            text_frame, wrap=tk.WORD, font=("Helvetica", 13),
-            cursor="arrow", state=tk.DISABLED,
-            padx=12, pady=10, spacing1=4, spacing3=4
-        )
-        lscroll = ttk.Scrollbar(text_frame, command=self.lyrics_text.yview)
-        self.lyrics_text.configure(yscrollcommand=lscroll.set)
-        self.lyrics_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        lscroll.pack(side=tk.RIGHT, fill=tk.Y)
-
-        self.lyrics_text.tag_config("word",   foreground="#ddd",  font=("Helvetica", 13))
-        self.lyrics_text.tag_config("switch", foreground="white", background="#c0671a",
-                                    font=("Helvetica", 13, "bold"))
-        self.lyrics_text.tag_config("hover",  foreground="white", background="#555")
+        self.lyrics_tab = LyricsTab(parent, self._clear_switch_points)
+        self.lyrics_text = self.lyrics_tab.get_text_widget()
 
     # ─────────────────────────────────────────────────────────────
     # Summary panel + Bottom bar (unchanged)
@@ -353,7 +327,7 @@ class MusicVideoCreator(tk.Tk):
             msg = f"✓ All load times set. Ready to generate!"
         else:
             msg = f"⚠ {have} points selected but only {needed} needed."
-        self.counter_var.set(msg)
+        self.lyrics_tab.set_counter_text(msg)
         self.summary_panel.set_points(have, needed)
 
     def _update_empty_label(self):
