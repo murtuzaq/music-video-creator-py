@@ -6,6 +6,7 @@ import threading
 
 from music_video_creator.app_state import AppState
 from music_video_creator.services.video_generator import VideoGenerator
+from music_video_creator.services.audio_transcriber import AudioTranscriber
 
 
 class MusicVideoCreator(tk.Tk):
@@ -17,6 +18,7 @@ class MusicVideoCreator(tk.Tk):
 
         self.state = AppState()
         self.video_generator = VideoGenerator(self._set_status)
+        self.audio_transcriber = AudioTranscriber()
 
         self._build_ui()
 
@@ -292,23 +294,8 @@ class MusicVideoCreator(tk.Tk):
 
     def _run_transcription(self):
         try:
-            import shutil
-            if not shutil.which("ffmpeg"):
-                raise EnvironmentError("ffmpeg is not installed...")  # (same as before)
-
-            import whisper
             self.after(0, lambda: self._set_status("Loading Whisper model…"))
-            model = whisper.load_model("base")
-            self.after(0, lambda: self._set_status("Transcribing…"))
-            result = model.transcribe(self.state.audio_path, word_timestamps=True)
-
-            words = []
-            for seg in result.get("segments", []):
-                for w in seg.get("words", []):
-                    clean = w["word"].strip()
-                    if clean:
-                        words.append({"text": clean, "start": w["start"], "end": w["end"]})
-
+            words = self.audio_transcriber.transcribe(self.state.audio_path)
             self.after(0, self._on_transcription_done, words)
 
         except Exception as exc:
