@@ -9,6 +9,7 @@ from music_video_creator.services.video_generator import VideoGenerator
 from music_video_creator.services.audio_transcriber import AudioTranscriber
 from music_video_creator.services.lyric_file_loader import LyricFileLoader
 from music_video_creator.services.lyric_aligner import LyricAligner
+from music_video_creator.ui.summary_panel import SummaryPanel
 
 
 class MusicVideoCreator(tk.Tk):
@@ -169,29 +170,8 @@ class MusicVideoCreator(tk.Tk):
     # Summary panel + Bottom bar (unchanged)
     # ─────────────────────────────────────────────────────────────
     def _panel_summary(self, parent):
-        tk.Label(parent, text="Summary", font=("Helvetica", 11, "bold"),
-                 bg="#1e1e1e", fg="white").pack(pady=(14, 6))
-        ttk.Separator(parent, orient=tk.HORIZONTAL).pack(fill=tk.X, padx=10)
+        self.summary_panel = SummaryPanel(parent)
 
-        info = tk.Frame(parent, bg="#1e1e1e")
-        info.pack(fill=tk.X, padx=14, pady=10)
-
-        def row(label, var):
-            f = tk.Frame(info, bg="#1e1e1e")
-            f.pack(fill=tk.X, pady=2)
-            tk.Label(f, text=label, bg="#1e1e1e", fg="#aaa", anchor="w", width=12).pack(side=tk.LEFT)
-            tk.Label(f, textvariable=var, bg="#1e1e1e", fg="white", anchor="w",
-                     wraplength=140, justify=tk.LEFT).pack(side=tk.LEFT)
-
-        self.sv_audio  = tk.StringVar(value="—")
-        self.sv_images = tk.StringVar(value="0")
-        self.sv_points = tk.StringVar(value="0 / 0")
-        self.sv_output = tk.StringVar(value="—")
-
-        row("Audio:",      self.sv_audio)
-        row("Images:",     self.sv_images)
-        row("Load points:", self.sv_points)
-        row("Output:",     self.sv_output)
 
     def _build_bottom_bar(self):
         bar = tk.Frame(self, bg="#2b2b2b", pady=6)
@@ -224,7 +204,7 @@ class MusicVideoCreator(tk.Tk):
             self.state.audio_path = path
             name = os.path.basename(path)
             self.audio_label.config(text=name, fg="black")
-            self.sv_audio.set(name)
+            self.summary_panel.set_audio(name)
             self.status_var.set(f"Audio loaded: {name}")
             self.transcribe_btn.config(state=tk.NORMAL)
 
@@ -419,7 +399,7 @@ class MusicVideoCreator(tk.Tk):
         else:
             msg = f"⚠ {have} points selected but only {needed} needed."
         self.counter_var.set(msg)
-        self.sv_points.set(f"{have} / {needed}")
+        self.summary_panel.set_points(have, needed)
 
     def _update_empty_label(self):
         for w in self.image_list_frame.winfo_children():
@@ -500,7 +480,7 @@ class MusicVideoCreator(tk.Tk):
                 entry["load_inner"].pack()
 
     def _refresh_summary(self):
-        self.sv_images.set(str(len(self.state.image_entries)))
+        self.summary_panel.set_images(len(self.state.image_entries))
 
     # Video generation methods (unchanged - _generate_video, _run_generation, etc.)
     def _generate_video(self):
@@ -529,7 +509,7 @@ class MusicVideoCreator(tk.Tk):
         if not out_path:
             return
 
-        self.sv_output.set(os.path.basename(out_path))
+        self.summary_panel.set_output(os.path.basename(out_path))
         self._set_generating(True)
 
         jobs = [(self.state.image_entries[0]["path"], None)]
