@@ -13,6 +13,7 @@ from music_video_creator.ui.summary_panel import SummaryPanel
 from music_video_creator.ui.bottom_bar import BottomBar
 from music_video_creator.ui.audio_section import AudioSection
 from music_video_creator.ui.header_bar import HeaderBar
+from music_video_creator.ui.main_layout import MainLayout
 
 class MusicVideoCreator(tk.Tk):
     def __init__(self):
@@ -35,21 +36,12 @@ class MusicVideoCreator(tk.Tk):
     # ─────────────────────────────────────────────────────────────
     def _build_ui(self):
         self.header_bar = HeaderBar(self)
+        self.main_layout = MainLayout(self)
 
-        content = tk.Frame(self)
-        content.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-
-        left = tk.Frame(content)
-        left.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-
-        right = tk.Frame(content, width=260, bg="#1e1e1e", relief=tk.SUNKEN, bd=1)
-        right.pack(side=tk.RIGHT, fill=tk.Y, padx=(10, 0))
-        right.pack_propagate(False)
-
-        self._section_audio(left)
-        ttk.Separator(left, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=6)
-        self._build_notebook(left)
-        self._panel_summary(right)
+        self._section_audio(self.main_layout.left)
+        ttk.Separator(self.main_layout.left, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=6)
+        self._build_notebook(self.main_layout.left)
+        self._panel_summary(self.main_layout.right)
         self._build_bottom_bar()
 
     # ─────────────────────────────────────────────────────────────
