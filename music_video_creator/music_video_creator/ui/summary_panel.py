@@ -23,6 +23,10 @@ class SummaryPanel:
         )
         self.generate_btn.pack(fill=tk.X, padx=14, pady=(20, 8))
 
+        self.progress = ttk.Progressbar(parent, mode="indeterminate")
+        self.progress.pack(fill=tk.X, padx=14, pady=(4, 8))
+        self.progress.pack_forget()
+
         self.__build(parent)
 
     def set_audio(self, value):
@@ -66,5 +70,9 @@ class SummaryPanel:
     def set_generating(self, generating):
         if generating:
             self.generate_btn.config(state=tk.DISABLED, text="Generating…")
+            self.progress.pack(fill=tk.X, padx=14, pady=(4, 8))
+            self.progress.start(12)
         else:
+            self.progress.stop()
+            self.progress.pack_forget()
             self.generate_btn.config(text="▶  Generate Video")

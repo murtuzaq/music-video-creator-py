@@ -300,7 +300,6 @@ class MusicVideoCreator(tk.Tk):
         self.state.generating = True
         self.summary_panel.set_generating(True)
         self._update_generate_button()
-        self.bottom_bar.set_progress(True)
 
         jobs = [(self.state.image_entries[0]["path"], None)]
         for e in self.state.image_entries[1:]:
@@ -318,7 +317,6 @@ class MusicVideoCreator(tk.Tk):
     def _on_success(self, out_path):
         self.state.generating = False
         self.summary_panel.set_generating(False)
-        self.bottom_bar.set_progress(False)
         self._update_generate_button()
         self.bottom_bar.set_status(f"Done! Saved to: {out_path}")
         messagebox.showinfo("Success", f"Video saved to:\n\n{out_path}")
@@ -326,7 +324,6 @@ class MusicVideoCreator(tk.Tk):
     def _on_error(self, message):
         self.state.generating = False
         self.summary_panel.set_generating(False)
-        self.bottom_bar.set_progress(False)
         self._update_generate_button()
         self.bottom_bar.set_status("Generation failed.")
         messagebox.showerror("Error", message)
