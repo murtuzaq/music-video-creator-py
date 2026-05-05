@@ -1,6 +1,5 @@
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
-from PIL import Image, ImageTk
 import os
 import threading
 
@@ -17,6 +16,7 @@ from music_video_creator.ui.main_layout import MainLayout
 from music_video_creator.ui.main_notebook import MainNotebook
 from music_video_creator.ui.lyrics_tab import LyricsTab
 from music_video_creator.ui.image_timing_tab import ImageTimingTab
+from music_video_creator.ui.image_row import ImageRow
 
 class MusicVideoCreator(tk.Tk):
     def __init__(self):
@@ -323,61 +323,39 @@ class MusicVideoCreator(tk.Tk):
 
     def _add_image_row(self, path):
         default_load = 3.0 * len(self.state.image_entries)
-        entry = {"path": path, "load_var": tk.DoubleVar(value=default_load)}
-        self.state.image_entries.append(entry)
+        load_var = tk.DoubleVar(value=default_load)
 
-        row = tk.Frame(self.image_list_frame, relief=tk.RIDGE, bd=1, padx=6, pady=4)
-        row.pack(fill=tk.X, padx=4, pady=2)
-        entry["row_widget"] = row
+        entry = {
+            "path": path,
+            "load_var": load_var,
+            "row": None
+        }
 
-        try:
-            img = Image.open(path)
-            img.thumbnail((48, 48))
-            photo = ImageTk.PhotoImage(img)
-            entry["photo"] = photo
-            tk.Label(row, image=photo).pack(side=tk.LEFT, padx=(0, 8))
-        except Exception:
-            tk.Label(row, text="[img]", width=6).pack(side=tk.LEFT)
-
-        name = os.path.basename(path)
-        tk.Label(row, text=name, anchor="w", wraplength=220).pack(side=tk.LEFT, fill=tk.X, expand=True)
-
-        def remove(e=entry, r=row):
-            self.state.image_entries.remove(e)
-            r.destroy()
+        def remove():
+            self.state.image_entries.remove(entry)
+            entry["row"].destroy()
             self._update_empty_label()
             self._refresh_first_row()
             self._refresh_summary()
             self._update_switch_counter()
 
-        tk.Button(row, text="✕", command=remove, fg="red", relief=tk.FLAT, padx=4).pack(side=tk.RIGHT)
+        entry["row"] = ImageRow(
+            self.image_list_frame,
+            path,
+            load_var,
+            remove,
+            self._refresh_summary
+        )
 
-        timing_frame = tk.Frame(row)
-        timing_frame.pack(side=tk.RIGHT, padx=(8, 4))
-        entry["timing_frame"] = timing_frame
-
-        first_lbl = tk.Label(timing_frame, text="Plays first", fg="#5cb85c", font=("Helvetica", 9, "italic"))
-        entry["first_lbl"] = first_lbl
-
-        load_inner = tk.Frame(timing_frame)
-        entry["load_inner"] = load_inner
-        tk.Label(load_inner, text="Load in:").pack(side=tk.LEFT)
-        spin = ttk.Spinbox(load_inner, from_=0.1, to=7200, increment=0.5,
-                           textvariable=entry["load_var"], width=7, command=self._refresh_summary)
-        spin.pack(side=tk.LEFT, padx=(4, 2))
-        tk.Label(load_inner, text="s").pack(side=tk.LEFT)
-        entry["spin"] = spin
-
+        self.state.image_entries.append(entry)
         self._update_empty_label()
 
     def _refresh_first_row(self):
         for i, entry in enumerate(self.state.image_entries):
             if i == 0:
-                entry["load_inner"].pack_forget()
-                entry["first_lbl"].pack()
+                entry["row"].show_first_mode()
             else:
-                entry["first_lbl"].pack_forget()
-                entry["load_inner"].pack()
+                entry["row"].show_timed_mode()
 
     def _refresh_summary(self):
         self.summary_panel.set_images(len(self.state.image_entries))
