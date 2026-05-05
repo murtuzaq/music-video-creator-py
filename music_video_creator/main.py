@@ -8,6 +8,7 @@ from music_video_creator.app_state import AppState
 from music_video_creator.services.video_generator import VideoGenerator
 from music_video_creator.services.audio_transcriber import AudioTranscriber
 from music_video_creator.services.lyric_file_loader import LyricFileLoader
+from music_video_creator.services.lyric_aligner import LyricAligner
 
 
 class MusicVideoCreator(tk.Tk):
@@ -21,6 +22,7 @@ class MusicVideoCreator(tk.Tk):
         self.video_generator = VideoGenerator(self._set_status)
         self.audio_transcriber = AudioTranscriber()
         self.lyric_file_loader = LyricFileLoader()
+        self.lyric_aligner = LyricAligner()
 
         self._build_ui()
 
@@ -311,58 +313,15 @@ class MusicVideoCreator(tk.Tk):
 
     def _run_lyrics_alignment(self):
         try:
-            import whisper
-            model = whisper.load_model("base")
-            
-            result = model.transcribe(self.state.audio_path, word_timestamps=True)
-            
-            trans_words = []
-            for seg in result.get("segments", []):
-                for w in seg.get("words", []):
-                    clean = w["word"].strip('.,!?')
-                    if clean:
-                        trans_words.append({
-                            "text": clean.lower(),
-                            "start": w["start"],
-                            "end": w["end"]
-                        })
-
-            # Match provided lyrics to real transcription
-            aligned = []
-            t_idx = 0
-            for orig in self.state.transcription_words:
-                orig_lower = orig["text"].lower()
-                best_match = None
-                best_score = -1
-                best_i = t_idx
-                for i in range(t_idx, min(t_idx + 30, len(trans_words))):
-                    score = self._word_similarity(orig_lower, trans_words[i]["text"])
-                    if score > best_score:
-                        best_score = score
-                        best_match = trans_words[i]
-                        best_i = i
-                if best_match and best_score > 0.5:
-                    aligned.append({
-                        "text": orig["text"],
-                        "start": best_match["start"],
-                        "end": best_match["end"]
-                    })
-                    t_idx = best_i + 1
-                else:
-                    aligned.append(orig)  # fallback
-
-            self.after(0, self._on_alignment_done, aligned)
+            aligned_words = self.lyric_aligner.align(
+                self.state.audio_path,
+                self.state.transcription_words
+            )
+            self.after(0, self._on_alignment_done, aligned_words)
 
         except Exception as exc:
             self.after(0, lambda e=exc: messagebox.showerror("Alignment Failed", str(e)))
             self.after(0, self._set_progress, False)
-
-    def _word_similarity(self, a, b):
-        if not a or not b:
-            return 0.0
-        set_a = set(a)
-        set_b = set(b)
-        return len(set_a & set_b) / max(len(set_a), len(set_b))
 
     def _on_alignment_done(self, aligned_words):
         self.state.transcription_words = aligned_words
