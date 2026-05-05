@@ -10,6 +10,7 @@ from music_video_creator.services.audio_transcriber import AudioTranscriber
 from music_video_creator.services.lyric_file_loader import LyricFileLoader
 from music_video_creator.services.lyric_aligner import LyricAligner
 from music_video_creator.ui.summary_panel import SummaryPanel
+from music_video_creator.ui.bottom_bar import BottomBar
 
 
 class MusicVideoCreator(tk.Tk):
@@ -20,12 +21,13 @@ class MusicVideoCreator(tk.Tk):
         self.resizable(True, True)
 
         self.state = AppState()
-        self.video_generator = VideoGenerator(self._set_status)
         self.audio_transcriber = AudioTranscriber()
         self.lyric_file_loader = LyricFileLoader()
         self.lyric_aligner = LyricAligner()
 
         self._build_ui()
+
+        self.video_generator = VideoGenerator(self.bottom_bar.set_status)
 
     # ─────────────────────────────────────────────────────────────
     # UI bootstrap
@@ -174,23 +176,7 @@ class MusicVideoCreator(tk.Tk):
 
 
     def _build_bottom_bar(self):
-        bar = tk.Frame(self, bg="#2b2b2b", pady=6)
-        bar.pack(fill=tk.X, side=tk.BOTTOM)
-
-        self.progress = ttk.Progressbar(bar, mode="indeterminate", length=200)
-        self.progress.pack(side=tk.LEFT, padx=16, pady=4)
-        self.progress.pack_forget()
-
-        self.status_var = tk.StringVar(value="Ready.")
-        tk.Label(bar, textvariable=self.status_var, bg="#2b2b2b", fg="#aaa").pack(side=tk.LEFT, padx=16)
-
-        self.generate_btn = tk.Button(
-            bar, text="▶  Generate Video",
-            command=self._generate_video,
-            bg="#e05c00", fg="white", font=("Helvetica", 11, "bold"),
-            relief=tk.FLAT, padx=16, pady=4
-        )
-        self.generate_btn.pack(side=tk.RIGHT, padx=16)
+        self.bottom_bar = BottomBar(self, self._generate_video)
 
     # ─────────────────────────────────────────────────────────────
     # Audio actions
@@ -205,7 +191,7 @@ class MusicVideoCreator(tk.Tk):
             name = os.path.basename(path)
             self.audio_label.config(text=name, fg="black")
             self.summary_panel.set_audio(name)
-            self.status_var.set(f"Audio loaded: {name}")
+            self.bottom_bar.set_status(f"Audio loaded: {name}")
             self.transcribe_btn.config(state=tk.NORMAL)
 
     def _pick_lyrics(self):
@@ -229,7 +215,7 @@ class MusicVideoCreator(tk.Tk):
                 return
 
             self.state.switch_points = []
-            self._set_status(f"Loaded {len(self.state.transcription_words)} words from: {os.path.basename(path)}")
+            self.bottom_bar.set_status(f"Loaded {len(self.state.transcription_words)} words from: {os.path.basename(path)}")
             self._render_lyrics()
             self.notebook.tab(self.tab_lyrics, state="normal")
             self.notebook.select(self.tab_lyrics)
@@ -251,13 +237,13 @@ class MusicVideoCreator(tk.Tk):
         if not self.state.audio_path:
             return
         self.transcribe_btn.config(state=tk.DISABLED, text="Transcribing…")
-        self._set_progress(True)
-        self._set_status("Transcribing audio...")
+        self.bottom_bar.set_progress(True)
+        self.bottom_bar.set_status("Transcribing audio...")
         threading.Thread(target=self._run_transcription, daemon=True).start()
 
     def _run_transcription(self):
         try:
-            self.after(0, lambda: self._set_status("Loading Whisper model…"))
+            self.after(0, lambda: self.bottom_bar.set_status("Loading Whisper model…"))
             words = self.audio_transcriber.transcribe(self.state.audio_path)
             self.after(0, self._on_transcription_done, words)
 
@@ -267,18 +253,18 @@ class MusicVideoCreator(tk.Tk):
     def _on_transcription_done(self, words):
         self.state.transcription_words = words
         self.state.switch_points = []
-        self._set_progress(False)
+        self.bottom_bar.set_progress(False)
         self.transcribe_btn.config(state=tk.NORMAL, text="🎤 Re-transcribe")
-        self._set_status(f"Transcription complete — {len(words)} words found.")
+        self.bottom_bar.set_status(f"Transcription complete — {len(words)} words found.")
         self._render_lyrics()
         self.notebook.tab(self.tab_lyrics, state="normal")
         self.notebook.select(self.tab_lyrics)
         self._update_switch_counter()
 
     def _on_transcription_error(self, msg):
-        self._set_progress(False)
+        self.bottom_bar.set_progress(False)
         self.transcribe_btn.config(state=tk.NORMAL, text="🎤 Transcribe Lyrics")
-        self._set_status("Transcription failed.")
+        self.bottom_bar.set_status("Transcription failed.")
         messagebox.showerror("Transcription failed", f"Error:\n\n{msg}")
 
     # ─────────────────────────────────────────────────────────────
@@ -287,8 +273,8 @@ class MusicVideoCreator(tk.Tk):
     def _align_lyrics_to_audio(self):
         if not self.state.audio_path or not self.state.transcription_words:
             return
-        self._set_progress(True)
-        self._set_status("Aligning lyrics to audio...")
+        self.bottom_bar.set_progress(True)
+        self.bottom_bar.set_status("Aligning lyrics to audio...")
         threading.Thread(target=self._run_lyrics_alignment, daemon=True).start()
 
     def _run_lyrics_alignment(self):
@@ -305,9 +291,9 @@ class MusicVideoCreator(tk.Tk):
 
     def _on_alignment_done(self, aligned_words):
         self.state.transcription_words = aligned_words
-        self._set_progress(False)
+        self.bottom_bar.set_progress(False)
         self._render_lyrics()
-        self._set_status(f"Lyrics aligned successfully — {len(aligned_words)} words")
+        self.bottom_bar.set_status(f"Lyrics aligned successfully — {len(aligned_words)} words")
         self._update_switch_counter()
 
     # ─────────────────────────────────────────────────────────────
@@ -510,7 +496,7 @@ class MusicVideoCreator(tk.Tk):
             return
 
         self.summary_panel.set_output(os.path.basename(out_path))
-        self._set_generating(True)
+        self.bottom_bar.set_generating(True)
 
         jobs = [(self.state.image_entries[0]["path"], None)]
         for e in self.state.image_entries[1:]:
@@ -526,23 +512,23 @@ class MusicVideoCreator(tk.Tk):
             self.after(0, self._on_error, str(exc))
 
     def _on_success(self, out_path):
-        self._set_generating(False)
-        self._set_status(f"Done! Saved to: {out_path}")
+        self.bottom_bar.set_generating(False)
+        self.bottom_bar.set_status(f"Done! Saved to: {out_path}")
         messagebox.showinfo("Success", f"Video saved to:\n\n{out_path}")
 
     def _on_error(self, message):
-        self._set_generating(False)
-        self._set_status("Generation failed.")
+        self.bottom_bar.set_generating(False)
+        self.bottom_bar.set_status("Generation failed.")
         messagebox.showerror("Error", message)
 
     def _set_generating(self, state: bool):
         self.state.generating = state
         if state:
             self.generate_btn.config(state=tk.DISABLED, text="Generating…")
-            self._set_progress(True)
+            self.bottom_bar.set_progress(True)
         else:
             self.generate_btn.config(state=tk.NORMAL, text="▶  Generate Video")
-            self._set_progress(False)
+            self.bottom_bar.set_progress(False)
 
     def _set_progress(self, running: bool):
         if running:
