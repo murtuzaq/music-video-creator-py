@@ -33,6 +33,7 @@ def new_project(filepath: str) -> None:
     data = {
         "version": VPROJ_VERSION,
         "audio_path": None,
+        "assets": [],
         "images": [],
         "transcript": None,
         "switch_points": [],
@@ -54,6 +55,11 @@ def save_project(state, filepath: str) -> None:
             json.dump(state.transcription_words, f, indent=2)
         transcript_ref = "gen/transcript.json"
 
+    assets = [
+        {"type": a["type"], "path": _to_stored_path(a["path"], project_dir)}
+        for a in state.assets
+    ]
+
     images = [
         {
             "path": _to_stored_path(e["path"], project_dir),
@@ -65,6 +71,7 @@ def save_project(state, filepath: str) -> None:
     data = {
         "version": VPROJ_VERSION,
         "audio_path": _to_stored_path(state.audio_path, project_dir) if state.audio_path else None,
+        "assets": assets,
         "images": images,
         "transcript": transcript_ref,
         "switch_points": state.switch_points,
@@ -82,6 +89,12 @@ def load_project(filepath: str) -> dict:
     # Resolve audio path to absolute
     if data.get("audio_path"):
         data["audio_path"] = _to_absolute_path(data["audio_path"], project_dir)
+
+    # Resolve asset paths to absolute
+    data["assets"] = [
+        {"type": a["type"], "path": _to_absolute_path(a["path"], project_dir)}
+        for a in data.get("assets", [])
+    ]
 
     # Resolve image paths to absolute
     data["images"] = [

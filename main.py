@@ -9,6 +9,7 @@ from music_video_creator.services.video_generator import VideoGenerator
 from music_video_creator.services.audio_transcriber import AudioTranscriber
 from music_video_creator.services.lyric_file_loader import LyricFileLoader
 from music_video_creator.services.lyric_aligner import LyricAligner
+from music_video_creator.ui.asset_panel import AssetPanel
 from music_video_creator.ui.menu_bar import MenuBar
 from music_video_creator.ui.ribbon_bar import RibbonBar
 from music_video_creator.ui.summary_panel import SummaryPanel
@@ -46,15 +47,23 @@ class MusicVideoCreator(tk.Tk):
     # ─────────────────────────────────────────────────────────────
     def _build_ui(self):
         callbacks = {
-            "new":  self._new_project,
-            "open": self._load_project,
-            "save": self._save_project,
-            "exit": self.destroy,
+            "new":         self._new_project,
+            "open":        self._load_project,
+            "save":        self._save_project,
+            "exit":        self.destroy,
+            "open_images": self._file_open_images,
+            "open_audio":  self._file_open_audio,
         }
         MenuBar(self, callbacks)
         self.ribbon_bar = RibbonBar(self, callbacks)
         self.header_bar = HeaderBar(self)
-        self.main_layout = MainLayout(self)
+
+        # workspace holds asset panel + main content side-by-side
+        self.workspace = tk.Frame(self)
+        self.workspace.pack(fill=tk.BOTH, expand=True)
+
+        self.asset_panel = AssetPanel(self.workspace, self.state, self._on_assets_changed)
+        self.main_layout = MainLayout(self.workspace)
 
         self._section_audio(self.main_layout.left)
         ttk.Separator(self.main_layout.left, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=6)
@@ -132,6 +141,36 @@ class MusicVideoCreator(tk.Tk):
         ready = has_audio and has_images and has_points and self.state.generating == False
 
         self.summary_panel.set_generate_enabled(ready)
+
+    # ─────────────────────────────────────────────────────────────
+    # Asset panel callbacks (File menu)
+    # ─────────────────────────────────────────────────────────────
+    def _on_assets_changed(self):
+        pass  # reserved for future reactions (e.g. auto-populate timeline)
+
+    def _file_open_images(self):
+        paths = filedialog.askopenfilenames(
+            title="Add image(s) to Assets",
+            filetypes=[("Image files", "*.png *.jpg *.jpeg *.bmp *.gif"), ("All files", "*.*")]
+        )
+        added = 0
+        for p in paths:
+            if self.asset_panel.add_asset(p, "image"):
+                added += 1
+        if added:
+            self.bottom_bar.set_status(f"Added {added} image(s) to Assets.")
+
+    def _file_open_audio(self):
+        paths = filedialog.askopenfilenames(
+            title="Add audio file(s) to Assets",
+            filetypes=[("Audio files", "*.mp3 *.wav *.aac *.ogg *.flac"), ("All files", "*.*")]
+        )
+        added = 0
+        for p in paths:
+            if self.asset_panel.add_asset(p, "audio"):
+                added += 1
+        if added:
+            self.bottom_bar.set_status(f"Added {added} audio file(s) to Assets.")
 
     # ─────────────────────────────────────────────────────────────
     # Keyboard shortcuts
@@ -212,8 +251,10 @@ class MusicVideoCreator(tk.Tk):
 
         self.state.switch_points = []
         self.state.transcription_words = []
+        self.state.assets = []
         self.image_list.clear_all()
         self.lyrics_controller.reset()
+        self.asset_panel.clear()
         self.main_notebook.disable_lyrics_tab()
 
         self._refresh_summary()
@@ -222,6 +263,11 @@ class MusicVideoCreator(tk.Tk):
 
     def _apply_project(self, data: dict, filepath: str):
         self._reset_ui()
+
+        assets = data.get("assets", [])
+        if assets:
+            self.state.assets = assets
+            self.asset_panel.rebuild()
 
         audio_path = data.get("audio_path")
         if audio_path:
