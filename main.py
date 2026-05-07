@@ -10,6 +10,7 @@ from music_video_creator.services.audio_transcriber import AudioTranscriber
 from music_video_creator.services.lyric_file_loader import LyricFileLoader
 from music_video_creator.services.lyric_aligner import LyricAligner
 from music_video_creator.ui.asset_panel import AssetPanel
+from music_video_creator.ui.inspector_panel import InspectorPanel
 from music_video_creator.ui.menu_bar import MenuBar
 from music_video_creator.ui.ribbon_bar import RibbonBar
 from music_video_creator.ui.summary_panel import SummaryPanel
@@ -32,8 +33,10 @@ class MusicVideoCreator(tk.Tk):
 
         self.state = AppState()
         self._project_path   = None
-        self._assets_visible = tk.BooleanVar(value=True)
-        self._last_sash_pos  = 210
+        self._assets_visible    = tk.BooleanVar(value=True)
+        self._inspector_visible = tk.BooleanVar(value=True)
+        self._last_sash_pos     = 210
+        self._last_inspector_w  = 240
 
         self.audio_transcriber = AudioTranscriber()
         self.lyric_file_loader = LyricFileLoader()
@@ -55,11 +58,13 @@ class MusicVideoCreator(tk.Tk):
             "exit":               self.destroy,
             "open_images":        self._file_open_images,
             "open_audio":         self._file_open_audio,
-            "view_toggle_assets": self._view_toggle_assets,
-            "view_reset":         self._view_reset,
+            "view_toggle_assets":    self._view_toggle_assets,
+            "view_toggle_inspector": self._view_toggle_inspector,
+            "view_reset":            self._view_reset,
         }
         variables = {
-            "assets_visible": self._assets_visible,
+            "assets_visible":    self._assets_visible,
+            "inspector_visible": self._inspector_visible,
         }
         MenuBar(self, callbacks, variables)
         self.ribbon_bar = RibbonBar(self, callbacks)
@@ -73,11 +78,17 @@ class MusicVideoCreator(tk.Tk):
 
         self.asset_pane = tk.Frame(self.workspace, bg="#252525")
         self.workspace.add(self.asset_pane, width=210, minsize=100, stretch="never")
-        self.asset_panel = AssetPanel(self.asset_pane, self.state, self._on_assets_changed)
+        self.asset_panel = AssetPanel(self.asset_pane, self.state,
+                                      self._on_assets_changed,
+                                      on_select=self._on_asset_selected)
 
         self.content_pane = tk.Frame(self.workspace)
         self.workspace.add(self.content_pane, minsize=400, stretch="always")
         self.main_layout = MainLayout(self.content_pane)
+
+        self.inspector_pane = tk.Frame(self.workspace, bg="#1e1e1e")
+        self.workspace.add(self.inspector_pane, width=240, minsize=100, stretch="never")
+        self.inspector_panel = InspectorPanel(self.inspector_pane)
 
         self._section_audio(self.main_layout.left)
         ttk.Separator(self.main_layout.left, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=6)
@@ -162,30 +173,67 @@ class MusicVideoCreator(tk.Tk):
     def _on_assets_changed(self):
         pass  # reserved for future reactions (e.g. auto-populate timeline)
 
+    def _on_asset_selected(self, asset: dict):
+        if asset["type"] == "image":
+            self.inspector_panel.show_image(asset)
+        else:
+            self.inspector_panel.show_audio(asset)
+
+    # ─────────────────────────────────────────────────────────────
+    # View helpers — all use the same forget/re-add strategy
+    # ─────────────────────────────────────────────────────────────
+
+    def _rebuild_panes(self):
+        """Forget all panes and re-add in correct order based on visibility state."""
+        for pane in (self.asset_pane, self.content_pane, self.inspector_pane):
+            try:
+                self.workspace.forget(pane)
+            except Exception:
+                pass
+        if self._assets_visible.get():
+            self.workspace.add(self.asset_pane, width=self._last_sash_pos,
+                               minsize=100, stretch="never")
+        self.workspace.add(self.content_pane, minsize=400, stretch="always")
+        if self._inspector_visible.get():
+            self.workspace.add(self.inspector_pane, width=self._last_inspector_w,
+                               minsize=100, stretch="never")
+        self.after(10, self._apply_sashes)
+
+    def _apply_sashes(self):
+        total = self.workspace.winfo_width()
+        sash  = 0
+        if self._assets_visible.get():
+            self.workspace.sash_place(sash, self._last_sash_pos, 0)
+            sash += 1
+        if self._inspector_visible.get() and total > 0:
+            self.workspace.sash_place(sash, total - self._last_inspector_w, 0)
+
     def _view_toggle_assets(self):
-        if self._assets_visible.get():      # checkbutton just flipped True → show
-            self._show_asset_pane(self._last_sash_pos)
-        else:                               # just flipped False → hide
+        if not self._assets_visible.get():      # just hidden → save sash pos
             try:
                 self._last_sash_pos = self.workspace.sash_coord(0)[0]
             except Exception:
                 pass
-            self.workspace.forget(self.asset_pane)
+        self._rebuild_panes()
+
+    def _view_toggle_inspector(self):
+        if not self._inspector_visible.get():   # just hidden → save width
+            try:
+                n     = self.workspace.panes()
+                total = self.workspace.winfo_width()
+                self._last_inspector_w = total - self.workspace.sash_coord(len(n) - 2)[0]
+            except Exception:
+                pass
+            self.inspector_panel.clear()
+        self._rebuild_panes()
 
     def _view_reset(self):
-        """Restore default layout: asset panel visible at 210 px."""
-        if not self._assets_visible.get():
-            self._assets_visible.set(True)
-            self._show_asset_pane(210)
-        self._last_sash_pos = 210
-        self.after(10, lambda: self.workspace.sash_place(0, 210, 0))
-
-    def _show_asset_pane(self, width: int):
-        """Re-insert asset pane at index 0 using the reliable forget/re-add sequence."""
-        self.workspace.forget(self.content_pane)
-        self.workspace.add(self.asset_pane,   width=width, minsize=100, stretch="never")
-        self.workspace.add(self.content_pane, minsize=400, stretch="always")
-        self.after(10, lambda w=width: self.workspace.sash_place(0, w, 0))
+        """Restore default layout: asset 210 px | content | inspector 240 px."""
+        self._assets_visible.set(True)
+        self._inspector_visible.set(True)
+        self._last_sash_pos    = 210
+        self._last_inspector_w = 240
+        self._rebuild_panes()
 
     def _file_open_images(self):
         paths = filedialog.askopenfilenames(
@@ -294,6 +342,7 @@ class MusicVideoCreator(tk.Tk):
         self.image_list.clear_all()
         self.lyrics_controller.reset()
         self.asset_panel.clear()
+        self.inspector_panel.clear()
         self.main_notebook.disable_lyrics_tab()
 
         self._refresh_summary()

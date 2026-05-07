@@ -22,6 +22,12 @@ class MenuBar(tk.Menu):
             onvalue=True, offvalue=False,
             command=callbacks["view_toggle_assets"],
         )
+        view_menu.add_checkbutton(
+            label="Inspector",
+            variable=variables.get("inspector_visible"),
+            onvalue=True, offvalue=False,
+            command=callbacks["view_toggle_inspector"],
+        )
         view_menu.add_separator()
         view_menu.add_command(label="Reset View", command=callbacks["view_reset"])
         self.add_cascade(label="View", menu=view_menu)
