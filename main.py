@@ -31,7 +31,9 @@ class MusicVideoCreator(tk.Tk):
         self.resizable(True, True)
 
         self.state = AppState()
-        self._project_path = None
+        self._project_path   = None
+        self._assets_visible = tk.BooleanVar(value=True)
+        self._last_sash_pos  = 210
 
         self.audio_transcriber = AudioTranscriber()
         self.lyric_file_loader = LyricFileLoader()
@@ -47,14 +49,19 @@ class MusicVideoCreator(tk.Tk):
     # ─────────────────────────────────────────────────────────────
     def _build_ui(self):
         callbacks = {
-            "new":         self._new_project,
-            "open":        self._load_project,
-            "save":        self._save_project,
-            "exit":        self.destroy,
-            "open_images": self._file_open_images,
-            "open_audio":  self._file_open_audio,
+            "new":                self._new_project,
+            "open":               self._load_project,
+            "save":               self._save_project,
+            "exit":               self.destroy,
+            "open_images":        self._file_open_images,
+            "open_audio":         self._file_open_audio,
+            "view_toggle_assets": self._view_toggle_assets,
+            "view_reset":         self._view_reset,
         }
-        MenuBar(self, callbacks)
+        variables = {
+            "assets_visible": self._assets_visible,
+        }
+        MenuBar(self, callbacks, variables)
         self.ribbon_bar = RibbonBar(self, callbacks)
         self.header_bar = HeaderBar(self)
 
@@ -64,13 +71,13 @@ class MusicVideoCreator(tk.Tk):
                                         bg="#444", bd=0)
         self.workspace.pack(fill=tk.BOTH, expand=True)
 
-        asset_pane = tk.Frame(self.workspace, bg="#252525")
-        self.workspace.add(asset_pane, width=210, minsize=100, stretch="never")
-        self.asset_panel = AssetPanel(asset_pane, self.state, self._on_assets_changed)
+        self.asset_pane = tk.Frame(self.workspace, bg="#252525")
+        self.workspace.add(self.asset_pane, width=210, minsize=100, stretch="never")
+        self.asset_panel = AssetPanel(self.asset_pane, self.state, self._on_assets_changed)
 
-        content_pane = tk.Frame(self.workspace)
-        self.workspace.add(content_pane, minsize=400, stretch="always")
-        self.main_layout = MainLayout(content_pane)
+        self.content_pane = tk.Frame(self.workspace)
+        self.workspace.add(self.content_pane, minsize=400, stretch="always")
+        self.main_layout = MainLayout(self.content_pane)
 
         self._section_audio(self.main_layout.left)
         ttk.Separator(self.main_layout.left, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=6)
@@ -154,6 +161,31 @@ class MusicVideoCreator(tk.Tk):
     # ─────────────────────────────────────────────────────────────
     def _on_assets_changed(self):
         pass  # reserved for future reactions (e.g. auto-populate timeline)
+
+    def _view_toggle_assets(self):
+        if self._assets_visible.get():      # checkbutton just flipped True → show
+            self._show_asset_pane(self._last_sash_pos)
+        else:                               # just flipped False → hide
+            try:
+                self._last_sash_pos = self.workspace.sash_coord(0)[0]
+            except Exception:
+                pass
+            self.workspace.forget(self.asset_pane)
+
+    def _view_reset(self):
+        """Restore default layout: asset panel visible at 210 px."""
+        if not self._assets_visible.get():
+            self._assets_visible.set(True)
+            self._show_asset_pane(210)
+        self._last_sash_pos = 210
+        self.after(10, lambda: self.workspace.sash_place(0, 210, 0))
+
+    def _show_asset_pane(self, width: int):
+        """Re-insert asset pane at index 0 using the reliable forget/re-add sequence."""
+        self.workspace.forget(self.content_pane)
+        self.workspace.add(self.asset_pane,   width=width, minsize=100, stretch="never")
+        self.workspace.add(self.content_pane, minsize=400, stretch="always")
+        self.after(10, lambda w=width: self.workspace.sash_place(0, w, 0))
 
     def _file_open_images(self):
         paths = filedialog.askopenfilenames(
