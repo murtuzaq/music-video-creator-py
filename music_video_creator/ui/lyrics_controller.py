@@ -30,6 +30,20 @@ class LyricsController:
 
         txt.config(state=tk.DISABLED)
 
+    def reset(self):
+        """Clear text widget and all state — used when starting/loading a project."""
+        self.state.switch_points.clear()
+        txt = self.text
+        txt.config(state=tk.NORMAL)
+        txt.delete("1.0", tk.END)
+        txt.config(state=tk.DISABLED)
+
+    def restore_switch_point_styles(self):
+        """Re-apply 'switch' highlight to words matching state.switch_points after project load."""
+        for i, word in enumerate(self.state.transcription_words):
+            if word["start"] in self.state.switch_points:
+                self.__set_word_style(f"w{i}", True)
+
     def clear_switch_points(self):
         self.state.switch_points.clear()
 

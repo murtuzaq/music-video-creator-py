@@ -4,10 +4,13 @@ import os
 import threading
 
 from music_video_creator.app_state import AppState
+from music_video_creator.project import new_project, save_project, load_project, VPROJ_EXTENSION
 from music_video_creator.services.video_generator import VideoGenerator
 from music_video_creator.services.audio_transcriber import AudioTranscriber
 from music_video_creator.services.lyric_file_loader import LyricFileLoader
 from music_video_creator.services.lyric_aligner import LyricAligner
+from music_video_creator.ui.menu_bar import MenuBar
+from music_video_creator.ui.ribbon_bar import RibbonBar
 from music_video_creator.ui.summary_panel import SummaryPanel
 from music_video_creator.ui.bottom_bar import BottomBar
 from music_video_creator.ui.audio_section import AudioSection
@@ -27,11 +30,14 @@ class MusicVideoCreator(tk.Tk):
         self.resizable(True, True)
 
         self.state = AppState()
+        self._project_path = None
+
         self.audio_transcriber = AudioTranscriber()
         self.lyric_file_loader = LyricFileLoader()
         self.lyric_aligner = LyricAligner()
 
         self._build_ui()
+        self._bind_shortcuts()
 
         self.video_generator = VideoGenerator(self.bottom_bar.set_status)
 
@@ -39,6 +45,14 @@ class MusicVideoCreator(tk.Tk):
     # UI bootstrap
     # ─────────────────────────────────────────────────────────────
     def _build_ui(self):
+        callbacks = {
+            "new":  self._new_project,
+            "open": self._load_project,
+            "save": self._save_project,
+            "exit": self.destroy,
+        }
+        MenuBar(self, callbacks)
+        self.ribbon_bar = RibbonBar(self, callbacks)
         self.header_bar = HeaderBar(self)
         self.main_layout = MainLayout(self)
 
@@ -118,6 +132,133 @@ class MusicVideoCreator(tk.Tk):
         ready = has_audio and has_images and has_points and self.state.generating == False
 
         self.summary_panel.set_generate_enabled(ready)
+
+    # ─────────────────────────────────────────────────────────────
+    # Keyboard shortcuts
+    # ─────────────────────────────────────────────────────────────
+    def _bind_shortcuts(self):
+        self.bind("<Control-n>", lambda _: self._new_project())
+        self.bind("<Control-o>", lambda _: self._load_project())
+        self.bind("<Control-s>", lambda _: self._save_project())
+
+    # ─────────────────────────────────────────────────────────────
+    # Project actions
+    # ─────────────────────────────────────────────────────────────
+    def _update_title(self):
+        if self._project_path:
+            name = os.path.basename(self._project_path)
+            self.title(f"Music Video Creator — {name}")
+        else:
+            self.title("Music Video Creator")
+
+    def _new_project(self):
+        if self.state.audio_path or self.state.image_entries:
+            if not messagebox.askyesno("New Project",
+                    "This will clear the current project. Continue?"):
+                return
+
+        path = filedialog.asksaveasfilename(
+            title="New Project — choose location and name",
+            defaultextension=VPROJ_EXTENSION,
+            filetypes=[("Video project", f"*{VPROJ_EXTENSION}"), ("All files", "*.*")]
+        )
+        if not path:
+            return
+
+        try:
+            new_project(path)
+            self._reset_ui()
+            self._project_path = path
+            self._update_title()
+            project_dir = os.path.dirname(path)
+            self.bottom_bar.set_status(
+                f"Project created: {os.path.basename(path)}  "
+                f"| out: {os.path.join(project_dir, 'out')}  "
+                f"| gen: {os.path.join(project_dir, 'gen')}"
+            )
+        except Exception as exc:
+            messagebox.showerror("Create Failed", str(exc))
+
+    def _load_project(self):
+        path = filedialog.askopenfilename(
+            title="Load Project",
+            filetypes=[("Video project", f"*{VPROJ_EXTENSION}"), ("All files", "*.*")]
+        )
+        if not path:
+            return
+        try:
+            data = load_project(path)
+            self._apply_project(data, path)
+        except Exception as exc:
+            messagebox.showerror("Load Failed", str(exc))
+
+    def _save_project(self):
+        if not self._project_path:
+            messagebox.showinfo(
+                "No Project",
+                "Create or load a project first  (Project → New Project or Load Project)."
+            )
+            return
+        try:
+            save_project(self.state, self._project_path)
+            self.bottom_bar.set_status(f"Saved: {os.path.basename(self._project_path)}")
+        except Exception as exc:
+            messagebox.showerror("Save Failed", str(exc))
+
+    def _reset_ui(self):
+        self.state.audio_path = None
+        self.audio_section.reset()
+        self.summary_panel.set_audio("—")
+
+        self.state.switch_points = []
+        self.state.transcription_words = []
+        self.image_list.clear_all()
+        self.lyrics_controller.reset()
+        self.main_notebook.disable_lyrics_tab()
+
+        self._refresh_summary()
+        self._update_switch_counter()
+        self._update_generate_button()
+
+    def _apply_project(self, data: dict, filepath: str):
+        self._reset_ui()
+
+        audio_path = data.get("audio_path")
+        if audio_path:
+            self.state.audio_path = audio_path
+            name = os.path.basename(audio_path)
+            self.audio_section.set_audio_name(name)
+            self.audio_section.set_transcribe_enabled(True)
+            self.summary_panel.set_audio(name)
+
+        for img in data.get("images", []):
+            self.image_list.add_image_row(img["path"])
+
+        for i, img in enumerate(data.get("images", [])):
+            if i < len(self.state.image_entries):
+                self.state.image_entries[i]["load_var"].set(img["load_time"])
+
+        if self.state.image_entries:
+            self.image_list.refresh_first_row()
+
+        words = data.get("transcription_words", [])
+        if words:
+            self.state.transcription_words = words
+            self.lyrics_controller.render()
+            self.main_notebook.enable_lyrics_tab()
+
+        switch_points = data.get("switch_points", [])
+        if switch_points:
+            self.state.switch_points = list(switch_points)
+            if words:
+                self.lyrics_controller.restore_switch_point_styles()
+
+        self._project_path = filepath
+        self._update_title()
+        self._refresh_summary()
+        self._update_switch_counter()
+        self._update_generate_button()
+        self.bottom_bar.set_status(f"Opened: {os.path.basename(filepath)}")
 
     # ─────────────────────────────────────────────────────────────
     # Audio actions
@@ -288,8 +429,13 @@ class MusicVideoCreator(tk.Tk):
                         f"Image {i+2} load time must be after previous image.")
                     return
 
+        initial_dir = (
+            os.path.join(os.path.dirname(self._project_path), "out")
+            if self._project_path else None
+        )
         out_path = filedialog.asksaveasfilename(
             title="Save video as…",
+            initialdir=initial_dir,
             defaultextension=".mp4",
             filetypes=[("MP4 video", "*.mp4")]
         )

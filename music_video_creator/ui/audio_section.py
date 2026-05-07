@@ -61,3 +61,7 @@ class AudioSection:
 
     def set_transcribe_text(self, text):
         self.transcribe_btn.config(text=text)
+
+    def reset(self):
+        self.audio_label.config(text="No file selected", fg="gray")
+        self.transcribe_btn.config(state=tk.DISABLED, text="🎤 Transcribe Lyrics")

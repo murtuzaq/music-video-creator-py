@@ -18,3 +18,7 @@ class MainNotebook:
 
     def select_lyrics_tab(self):
         self.notebook.select(self.lyrics_tab)
+
+    def disable_lyrics_tab(self):
+        self.notebook.tab(self.lyrics_tab, state="disabled")
+        self.notebook.select(self.images_tab)

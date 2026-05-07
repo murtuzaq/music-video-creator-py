@@ -77,5 +77,11 @@ class ImageList:
             label._is_empty_label = True
             label.pack()
 
+    def clear_all(self):
+        for entry in list(self.state.image_entries):
+            entry["row"].destroy()
+        self.state.image_entries.clear()
+        self.update_empty_label()
+
     def notify_changed(self):
         self.on_changed()

@@ -219,5 +219,6 @@ __marimo__/
 sample/
 output/
 *.mp4
-
+AstroProj/
+.claude/
 
