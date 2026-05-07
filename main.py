@@ -58,12 +58,19 @@ class MusicVideoCreator(tk.Tk):
         self.ribbon_bar = RibbonBar(self, callbacks)
         self.header_bar = HeaderBar(self)
 
-        # workspace holds asset panel + main content side-by-side
-        self.workspace = tk.Frame(self)
+        # workspace — horizontal paned window so the asset panel is resizable
+        self.workspace = tk.PanedWindow(self, orient=tk.HORIZONTAL,
+                                        sashwidth=5, sashrelief=tk.FLAT,
+                                        bg="#444", bd=0)
         self.workspace.pack(fill=tk.BOTH, expand=True)
 
-        self.asset_panel = AssetPanel(self.workspace, self.state, self._on_assets_changed)
-        self.main_layout = MainLayout(self.workspace)
+        asset_pane = tk.Frame(self.workspace, bg="#252525")
+        self.workspace.add(asset_pane, width=210, minsize=100, stretch="never")
+        self.asset_panel = AssetPanel(asset_pane, self.state, self._on_assets_changed)
+
+        content_pane = tk.Frame(self.workspace)
+        self.workspace.add(content_pane, minsize=400, stretch="always")
+        self.main_layout = MainLayout(content_pane)
 
         self._section_audio(self.main_layout.left)
         ttk.Separator(self.main_layout.left, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=6)

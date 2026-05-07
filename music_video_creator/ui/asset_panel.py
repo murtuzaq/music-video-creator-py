@@ -8,7 +8,6 @@ try:
 except ImportError:
     _PIL = False
 
-PANEL_W  = 210
 THUMB_W, THUMB_H = 44, 33
 
 
@@ -18,11 +17,9 @@ class AssetPanel:
         self.on_changed = on_changed
         self._photos    = {}   # path -> PhotoImage, keep alive
 
-        # ── outer frame ──────────────────────────────────────────
-        self.frame = tk.Frame(parent, width=PANEL_W, bg="#252525",
-                              relief=tk.SUNKEN, bd=1)
-        self.frame.pack(side=tk.LEFT, fill=tk.Y)
-        self.frame.pack_propagate(False)
+        # ── outer frame — fills its pane; width is controlled by the sash ──
+        self.frame = tk.Frame(parent, bg="#252525")
+        self.frame.pack(fill=tk.BOTH, expand=True)
 
         # ── header ───────────────────────────────────────────────
         tk.Label(self.frame, text="Assets", bg="#252525", fg="white",
@@ -113,10 +110,12 @@ class AssetPanel:
         tk.Label(info, text=badge_txt, bg=badge_bg, fg="white",
                  font=("Helvetica", 7, "bold"), padx=3, pady=1).pack(anchor="w")
 
-        display = (name[:17] + "…") if len(name) > 18 else name
-        tk.Label(info, text=display, bg="#333", fg="#ccc",
-                 font=("Helvetica", 8), anchor="w",
-                 wraplength=110, justify=tk.LEFT).pack(anchor="w")
+        name_lbl = tk.Label(info, text=name, bg="#333", fg="#ccc",
+                            font=("Helvetica", 8), anchor="w",
+                            justify=tk.LEFT)
+        name_lbl.pack(anchor="w", fill=tk.X)
+        # Re-wrap whenever the info column is resized (panel drag or window resize)
+        info.bind("<Configure>", lambda e, lbl=name_lbl: lbl.configure(wraplength=e.width))
 
         # Remove button
         def _remove(e=entry, r=row):
