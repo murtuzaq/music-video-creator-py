@@ -111,12 +111,21 @@ class MusicVideoCreator(tk.Tk):
     # ─────────────────────────────────────────────────────────────
     def _on_project_node_selected(self, node: dict):
         node_type = node.get("type")
+        item_id   = node.get("item_id")
         if node_type == "image":
             self.inspector_panel.show_image(node)
         elif node_type == "audio":
             self.inspector_panel.show_audio(node)
         elif node_type == "video":
-            self.inspector_panel.show_video(node)
+            total_dur = self.project_panel.get_total_duration()
+            self.inspector_panel.show_project(node, total_dur)
+        elif node_type == "video_clip":
+            self.inspector_panel.show_video_clip(
+                node,
+                on_update=lambda name, dur: self.project_panel.update_node(
+                    item_id, name=name, duration=dur
+                ),
+            )
 
     def _on_asset_selected(self, node: dict):
         self.asset_inspector_panel.show_asset(node)

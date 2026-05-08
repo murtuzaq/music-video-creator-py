@@ -10,11 +10,24 @@ except ImportError:
 
 _DARK = {
     "bg_darkest": "#1e1e1e",
+    "bg_dark":    "#252525",
+    "bg_medium":  "#2b2b2b",
     "fg_primary": "white",
+    "fg_secondary": "#aaa",
     "fg_dim":     "#555",
     "fg_dim_alt": "#888",
     "fg_value":   "#ddd",
+    "selected_bg": "#4a4a7a",
 }
+
+
+def _fmt_duration(seconds: float) -> str:
+    total = int(seconds)
+    h, rem = divmod(total, 3600)
+    m, s = divmod(rem, 60)
+    if h:
+        return f"{h}:{m:02d}:{s:02d}"
+    return f"{m}:{s:02d}"
 
 
 def _fmt_size(path: str) -> str:
@@ -33,7 +46,11 @@ class InspectorPanel:
         self._preview_lbl  = None
         self._current_type = None
         self._current_node = None
-        self._colors       = dict(_DARK)
+        self._on_update              = None
+        self._project_total_duration = 0.0
+        self._colors                 = dict(_DARK)
+        self._name_var     = tk.StringVar()
+        self._dur_var      = tk.StringVar()
 
         self.frame = tk.Frame(parent, bg="#1e1e1e")
         self.frame.pack(fill=tk.BOTH, expand=True)
@@ -76,9 +93,11 @@ class InspectorPanel:
         if self._current_type == "image":
             self.show_image(self._current_node)
         elif self._current_type == "video":
-            self.show_video(self._current_node)
+            self.show_project(self._current_node, self._project_total_duration)
         elif self._current_type == "audio":
             self.show_audio(self._current_node)
+        elif self._current_type == "video_clip":
+            self.show_video_clip(self._current_node, self._on_update)
         else:
             self._show_empty()
 
@@ -104,16 +123,17 @@ class InspectorPanel:
         self._info_row("Name", os.path.basename(path))
         self._info_row("Size", _fmt_size(path))
 
-    def show_video(self, node: dict):
-        self._current_type = "video"
-        self._current_node = node
+    def show_project(self, node: dict, total_duration: float = 0.0):
+        self._current_type           = "video"
+        self._current_node           = node
+        self._project_total_duration = total_duration
         self._clear()
-        name = node.get("name") or "Video Project"
-        bg = self._colors["bg_darkest"]
-        tk.Label(self._body, text="▶", bg=bg, fg="#e05c00",
-                 font=("Helvetica", 52)).pack(pady=(20, 8))
-        self._info_row("Name", name)
-        self._info_row("Type", "Video Project")
+        name = node.get("name") or "Untitled Project"
+        bg   = self._colors["bg_darkest"]
+        tk.Label(self._body, text="📹", bg=bg, fg="#e05c00",
+                 font=("Helvetica", 40)).pack(pady=(14, 6))
+        self._info_row("Name",     name)
+        self._info_row("Duration", _fmt_duration(total_duration))
 
     def show_audio(self, asset: dict):
         self._current_type = "audio"
@@ -126,16 +146,78 @@ class InspectorPanel:
         self._info_row("Name", os.path.basename(path))
         self._info_row("Size", _fmt_size(path))
 
+    def show_video_clip(self, node: dict, on_update=None):
+        self._current_type = "video_clip"
+        self._current_node = node
+        self._on_update    = on_update
+        self._clear()
+        bg = self._colors["bg_darkest"]
+
+        tk.Label(self._body, text="🎞", bg=bg, fg="#9b59b6",
+                 font=("Helvetica", 40)).pack(pady=(14, 6))
+
+        self._field_label("Name")
+        self._name_var.set(node.get("name") or "")
+        name_entry = tk.Entry(self._body, textvariable=self._name_var,
+                              bg=self._colors.get("bg_dark", "#252525"),
+                              fg=self._colors["fg_value"],
+                              insertbackground=self._colors["fg_primary"],
+                              relief=tk.FLAT, bd=4,
+                              font=("Helvetica", 9))
+        name_entry.pack(fill=tk.X, pady=(0, 8))
+
+        self._field_label("Duration (seconds)")
+        dur = node.get("duration")
+        self._dur_var.set(str(dur) if dur is not None else "0")
+        dur_entry = tk.Entry(self._body, textvariable=self._dur_var,
+                             bg=self._colors.get("bg_dark", "#252525"),
+                             fg=self._colors["fg_value"],
+                             insertbackground=self._colors["fg_primary"],
+                             relief=tk.FLAT, bd=4,
+                             font=("Helvetica", 9))
+        dur_entry.pack(fill=tk.X, pady=(0, 12))
+
+        tk.Button(self._body, text="Apply Changes",
+                  command=self._apply_clip_changes,
+                  bg="#9b59b6", fg="white",
+                  activebackground="#7d3c98", activeforeground="white",
+                  relief=tk.FLAT, bd=0, padx=10, pady=5,
+                  font=("Helvetica", 9, "bold"), cursor="hand2").pack(anchor="w")
+
     def clear(self):
-        self._pil_src      = None
-        self._preview_lbl  = None
-        self._current_type = None
-        self._current_node = None
+        self._pil_src                = None
+        self._preview_lbl            = None
+        self._current_type           = None
+        self._current_node           = None
+        self._on_update              = None
+        self._project_total_duration = 0.0
         self._show_empty()
 
     # ─────────────────────────────────────────────────────────────
     # Private
     # ─────────────────────────────────────────────────────────────
+
+    def _field_label(self, text: str):
+        bg = self._colors["bg_darkest"]
+        tk.Label(self._body, text=text, bg=bg,
+                 fg=self._colors["fg_dim_alt"],
+                 font=("Helvetica", 8), anchor="w").pack(fill=tk.X)
+
+    def _apply_clip_changes(self):
+        name = self._name_var.get().strip()
+        dur_raw = self._dur_var.get().strip()
+        try:
+            dur = float(dur_raw)
+            if dur < 0:
+                raise ValueError
+        except ValueError:
+            dur = 0.0
+        if not name:
+            name = self._current_node.get("name") or "Video Clip"
+        self._current_node["name"] = name
+        self._current_node["duration"] = dur
+        if self._on_update:
+            self._on_update(name, dur)
 
     def _clear(self):
         self._pil_src     = None
