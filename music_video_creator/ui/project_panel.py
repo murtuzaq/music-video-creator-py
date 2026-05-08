@@ -1,4 +1,5 @@
 import os
+import re
 import tkinter as tk
 from tkinter import ttk
 
@@ -35,12 +36,14 @@ def _make_camera_icon():
 
 
 class ProjectPanel:
-    def __init__(self, parent, on_select=None, on_close=None):
-        self._on_select        = on_select
-        self._icons            = {t: _make_icon(c) for t, c in _ICON_SPEC.items()}
-        self._icons["video"]   = _make_camera_icon()
-        self._nodes            = {}   # item_id -> {"type", "path", "name", "duration"}
-        self._video_clip_count = 0
+    def __init__(self, parent, on_select=None, on_close=None, on_remove_project=None):
+        self._on_select         = on_select
+        self._on_remove_project = on_remove_project
+        self._icons             = {t: _make_icon(c) for t, c in _ICON_SPEC.items()}
+        self._icons["video"]    = _make_camera_icon()
+        self._nodes             = {}    # item_id -> {"type","path","name","duration"}
+        self._video_clip_count  = 0
+        self._ctx_root_id       = None  # project root under the active right-click
 
         self.frame = tk.Frame(parent, bg="#252525")
         self.frame.pack(fill=tk.BOTH, expand=True)
@@ -91,7 +94,9 @@ class ProjectPanel:
 
         # ── right-click context menu ───────────────────────────────
         self._ctx_menu = tk.Menu(self._tree, tearoff=0)
-        self._ctx_menu.add_command(label="New Video Clip", command=self._new_video_clip)
+        self._ctx_menu.add_command(label="Add Video Clip", command=self._new_video_clip)
+        self._ctx_menu.add_separator()
+        self._ctx_menu.add_command(label="Remove Project",  command=self._remove_ctx_project)
 
     # ── Theme ─────────────────────────────────────────────────────
 
@@ -114,14 +119,18 @@ class ProjectPanel:
 
     # ── Public API ────────────────────────────────────────────────
 
-    def set_root(self, project_name: str) -> str:
-        self.clear()
+    def add_root(self, project_name: str) -> str:
+        """Add a project root node without clearing existing projects."""
         item_id = self._tree.insert("", "end",
                                     text=f"  {project_name}",
                                     image=self._icons.get("video"),
                                     open=True)
         self._nodes[item_id] = {"type": "video", "path": None, "name": project_name, "duration": None}
         return item_id
+
+    def add_project(self, tree_data: dict) -> str:
+        """Deserialise and add one project tree without clearing existing projects."""
+        return self._dict_to_tree("", tree_data)
 
     def add_node(self, parent_id: str, node_type: str, path: str) -> str:
         name = os.path.basename(path) if path else node_type
@@ -143,6 +152,10 @@ class ProjectPanel:
         if duration is not None:
             node["duration"] = duration
 
+    def remove_project(self, root_id: str):
+        self._purge_node(root_id)
+        self._tree.delete(root_id)
+
     def get_selected_type(self):
         sel = self._tree.selection()
         if not sel:
@@ -160,8 +173,13 @@ class ProjectPanel:
         roots = self._tree.get_children("")
         return roots[0] if roots else None
 
-    def get_total_duration(self) -> float:
-        root_id = self.get_root_id()
+    def get_all_root_ids(self) -> list:
+        return list(self._tree.get_children(""))
+
+    def get_project_data(self, root_id: str) -> dict:
+        return self._node_to_dict(root_id)
+
+    def get_total_duration(self, root_id: str) -> float:
         if not root_id:
             return 0.0
         total = 0.0
@@ -180,6 +198,7 @@ class ProjectPanel:
             self._tree.delete(item)
         self._nodes.clear()
         self._video_clip_count = 0
+        self._ctx_root_id = None
 
     def rebuild(self, tree_data):
         self.clear()
@@ -192,7 +211,7 @@ class ProjectPanel:
     # ── Private ───────────────────────────────────────────────────
 
     def _new_video_clip(self):
-        root_id = self.get_root_id()
+        root_id = self._ctx_root_id
         if not root_id:
             return
         self._video_clip_count += 1
@@ -208,14 +227,30 @@ class ProjectPanel:
         if self._on_select:
             self._on_select(dict(self._nodes[item_id], item_id=item_id))
 
+    def _remove_ctx_project(self):
+        root_id = self._ctx_root_id
+        if not root_id:
+            return
+        self._purge_node(root_id)
+        self._tree.delete(root_id)
+        if self._on_remove_project:
+            self._on_remove_project(root_id)
+        self._ctx_root_id = None
+
     def _on_right_click(self, event):
         item = self._tree.identify_row(event.y)
         if not item:
             return
         node = self._nodes.get(item, {})
         if node.get("type") == "video":
+            self._ctx_root_id = item
             self._tree.selection_set(item)
             self._ctx_menu.post(event.x_root, event.y_root)
+
+    def _purge_node(self, item_id: str):
+        for child in self._tree.get_children(item_id):
+            self._purge_node(child)
+        self._nodes.pop(item_id, None)
 
     def _node_to_dict(self, item_id: str) -> dict:
         node = self._nodes.get(item_id, {})
@@ -244,8 +279,6 @@ class ProjectPanel:
             "duration": node_data.get("duration"),
         }
         if node_type == "video_clip":
-            # keep counter above any restored clip numbers
-            import re
             m = re.search(r"\d+$", name)
             if m:
                 self._video_clip_count = max(self._video_clip_count, int(m.group()))

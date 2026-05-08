@@ -23,7 +23,7 @@ class MusicVideoCreator(tk.Tk):
         self.resizable(True, True)
 
         self.state = AppState()
-        self._project_path        = None
+        self._project_paths                = {}   # root_id -> filepath
         self._assets_visible               = tk.BooleanVar(value=True)
         self._project_inspector_visible    = tk.BooleanVar(value=True)
         self._asset_inspector_visible      = tk.BooleanVar(value=True)
@@ -74,7 +74,8 @@ class MusicVideoCreator(tk.Tk):
         self.workspace.add(self.project_pane, width=210, minsize=100, stretch="never")
         self.project_panel = ProjectPanel(self.project_pane,
                                           on_select=self._on_project_node_selected,
-                                          on_close=self._close_project_panel)
+                                          on_close=self._close_project_panel,
+                                          on_remove_project=self._on_remove_project)
 
         # ── Inspector Column (center, stretches) ──────────────────
         self.inspector_column = tk.PanedWindow(self.workspace, orient=tk.VERTICAL,
@@ -117,7 +118,7 @@ class MusicVideoCreator(tk.Tk):
         elif node_type == "audio":
             self.inspector_panel.show_audio(node)
         elif node_type == "video":
-            total_dur = self.project_panel.get_total_duration()
+            total_dur = self.project_panel.get_total_duration(item_id)
             self.inspector_panel.show_project(node, total_dur)
         elif node_type == "video_clip":
             self.inspector_panel.show_video_clip(
@@ -126,6 +127,11 @@ class MusicVideoCreator(tk.Tk):
                     item_id, name=name, duration=dur
                 ),
             )
+
+    def _on_remove_project(self, root_id: str):
+        self._project_paths.pop(root_id, None)
+        self._update_title()
+        self.inspector_panel.clear()
 
     def _on_asset_selected(self, node: dict):
         self.asset_inspector_panel.show_asset(node)
@@ -258,10 +264,14 @@ class MusicVideoCreator(tk.Tk):
     # Project actions
     # ─────────────────────────────────────────────────────────────
     def _update_title(self):
-        if self._project_path:
-            self.title(f"Music Video Creator — {os.path.basename(self._project_path)}")
-        else:
+        count = len(self._project_paths)
+        if count == 0:
             self.title("Music Video Creator")
+        elif count == 1:
+            path = next(iter(self._project_paths.values()))
+            self.title(f"Music Video Creator — {os.path.basename(path)}")
+        else:
+            self.title(f"Music Video Creator ({count} projects)")
 
     def _new_project(self):
         path = filedialog.asksaveasfilename(
@@ -273,11 +283,9 @@ class MusicVideoCreator(tk.Tk):
             return
         try:
             new_project(path)
-            self._reset_ui()
-            self._project_path = path
             project_name = os.path.splitext(os.path.basename(path))[0]
-            self.project_panel.set_root(project_name)
-            self.state.project_tree = self.project_panel.get_tree_data()
+            root_id = self.project_panel.add_root(project_name)
+            self._project_paths[root_id] = path
             self._update_title()
             self.bottom_bar.set_status(f"Project created: {os.path.basename(path)}")
         except Exception as exc:
@@ -297,32 +305,39 @@ class MusicVideoCreator(tk.Tk):
             messagebox.showerror("Load Failed", str(exc))
 
     def _save_project(self):
-        if not self._project_path:
+        if not self._project_paths:
             messagebox.showinfo(
-                "No Project",
+                "No Projects",
                 "Create or load a project first  (Project → New Project or Load Project)."
             )
             return
-        try:
-            self.state.project_tree = self.project_panel.get_tree_data()
-            save_project(self.state, self._project_path)
-            self.bottom_bar.set_status(f"Saved: {os.path.basename(self._project_path)}")
-        except Exception as exc:
-            messagebox.showerror("Save Failed", str(exc))
+        errors = []
+        for root_id, path in self._project_paths.items():
+            try:
+                state = AppState()
+                state.project_tree = self.project_panel.get_project_data(root_id)
+                save_project(state, path)
+            except Exception as exc:
+                errors.append(f"{os.path.basename(path)}: {exc}")
+        if errors:
+            messagebox.showerror("Save Failed", "\n".join(errors))
+        else:
+            count = len(self._project_paths)
+            noun  = "project" if count == 1 else "projects"
+            self.bottom_bar.set_status(f"Saved {count} {noun}")
 
     def _reset_ui(self):
         self.state = AppState()
+        self._project_paths.clear()
         self.project_panel.clear()
         self.inspector_panel.clear()
         self.asset_inspector_panel.clear()
 
     def _apply_project(self, data: dict, filepath: str):
-        self._reset_ui()
         tree_data = data.get("project_tree")
         if tree_data:
-            self.project_panel.rebuild(tree_data)
-            self.state.project_tree = tree_data
-        self._project_path = filepath
+            root_id = self.project_panel.add_project(tree_data)
+            self._project_paths[root_id] = filepath
         self._update_title()
         self.bottom_bar.set_status(f"Opened: {os.path.basename(filepath)}")
 

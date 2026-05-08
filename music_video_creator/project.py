@@ -13,6 +13,7 @@ def _resolve_tree_save(node: dict, project_dir: Path) -> dict:
         "type":     node.get("type"),
         "name":     node.get("name"),
         "path":     _to_stored_path(node["path"], project_dir) if node.get("path") else None,
+        "duration": node.get("duration"),
         "children": [_resolve_tree_save(c, project_dir) for c in node.get("children", [])],
     }
 
@@ -24,6 +25,7 @@ def _resolve_tree_load(node: dict, project_dir: Path) -> dict:
         "type":     node.get("type"),
         "name":     node.get("name"),
         "path":     _to_absolute_path(node["path"], project_dir) if node.get("path") else None,
+        "duration": node.get("duration"),
         "children": [_resolve_tree_load(c, project_dir) for c in node.get("children", [])],
     }
 
