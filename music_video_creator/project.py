@@ -6,6 +6,28 @@ VPROJ_VERSION = "1.0"
 VPROJ_EXTENSION = ".vproj"
 
 
+def _resolve_tree_save(node: dict, project_dir: Path) -> dict:
+    if not node:
+        return node
+    return {
+        "type":     node.get("type"),
+        "name":     node.get("name"),
+        "path":     _to_stored_path(node["path"], project_dir) if node.get("path") else None,
+        "children": [_resolve_tree_save(c, project_dir) for c in node.get("children", [])],
+    }
+
+
+def _resolve_tree_load(node: dict, project_dir: Path) -> dict:
+    if not node:
+        return node
+    return {
+        "type":     node.get("type"),
+        "name":     node.get("name"),
+        "path":     _to_absolute_path(node["path"], project_dir) if node.get("path") else None,
+        "children": [_resolve_tree_load(c, project_dir) for c in node.get("children", [])],
+    }
+
+
 def _to_stored_path(asset_path: str, project_dir: Path) -> str:
     """Relative if the asset lives inside the project folder, otherwise absolute."""
     try:
@@ -30,12 +52,13 @@ def new_project(filepath: str) -> None:
     (project_dir / "out").mkdir(parents=True, exist_ok=True)
     (project_dir / "gen").mkdir(parents=True, exist_ok=True)
 
+    project_name = Path(filepath).stem
     data = {
-        "version": VPROJ_VERSION,
-        "audio_path": None,
-        "assets": [],
-        "images": [],
-        "transcript": None,
+        "version":      VPROJ_VERSION,
+        "audio_path":   None,
+        "project_tree": {"type": "video", "name": project_name, "path": None, "children": []},
+        "images":       [],
+        "transcript":   None,
         "switch_points": [],
     }
     with open(filepath, "w", encoding="utf-8") as f:
@@ -55,10 +78,7 @@ def save_project(state, filepath: str) -> None:
             json.dump(state.transcription_words, f, indent=2)
         transcript_ref = "gen/transcript.json"
 
-    assets = [
-        {"type": a["type"], "path": _to_stored_path(a["path"], project_dir)}
-        for a in state.assets
-    ]
+    project_tree = _resolve_tree_save(state.project_tree, project_dir)
 
     images = [
         {
@@ -69,11 +89,11 @@ def save_project(state, filepath: str) -> None:
     ]
 
     data = {
-        "version": VPROJ_VERSION,
-        "audio_path": _to_stored_path(state.audio_path, project_dir) if state.audio_path else None,
-        "assets": assets,
-        "images": images,
-        "transcript": transcript_ref,
+        "version":      VPROJ_VERSION,
+        "audio_path":   _to_stored_path(state.audio_path, project_dir) if state.audio_path else None,
+        "project_tree": project_tree,
+        "images":       images,
+        "transcript":   transcript_ref,
         "switch_points": state.switch_points,
     }
     with open(filepath, "w", encoding="utf-8") as f:
@@ -90,11 +110,9 @@ def load_project(filepath: str) -> dict:
     if data.get("audio_path"):
         data["audio_path"] = _to_absolute_path(data["audio_path"], project_dir)
 
-    # Resolve asset paths to absolute
-    data["assets"] = [
-        {"type": a["type"], "path": _to_absolute_path(a["path"], project_dir)}
-        for a in data.get("assets", [])
-    ]
+    # Resolve project tree paths to absolute
+    if data.get("project_tree"):
+        data["project_tree"] = _resolve_tree_load(data["project_tree"], project_dir)
 
     # Resolve image paths to absolute
     data["images"] = [

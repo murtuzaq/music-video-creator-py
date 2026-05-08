@@ -63,6 +63,14 @@ class InspectorPanel:
         self._info_row("Name", os.path.basename(path))
         self._info_row("Size", _fmt_size(path))
 
+    def show_video(self, node: dict):
+        self._clear()
+        name = node.get("name") or "Video Project"
+        tk.Label(self._body, text="▶", bg="#1e1e1e", fg="#e05c00",
+                 font=("Helvetica", 52)).pack(pady=(20, 8))
+        self._info_row("Name", name)
+        self._info_row("Type", "Video Project")
+
     def show_audio(self, asset: dict):
         self._clear()
         path = asset["path"]

@@ -5,4 +5,4 @@ class AppState:
         self.generating = False
         self.transcription_words = []
         self.switch_points = []
-        self.assets = []   # list of {"type": "image"|"audio", "path": str}
+        self.project_tree = None   # nested dict: {"type","name","path","children"}

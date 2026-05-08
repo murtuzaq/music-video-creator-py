@@ -9,7 +9,7 @@ from music_video_creator.services.video_generator import VideoGenerator
 from music_video_creator.services.audio_transcriber import AudioTranscriber
 from music_video_creator.services.lyric_file_loader import LyricFileLoader
 from music_video_creator.services.lyric_aligner import LyricAligner
-from music_video_creator.ui.asset_panel import AssetPanel
+from music_video_creator.ui.project_panel import ProjectPanel
 from music_video_creator.ui.inspector_panel import InspectorPanel
 from music_video_creator.ui.menu_bar import MenuBar
 from music_video_creator.ui.ribbon_bar import RibbonBar
@@ -52,12 +52,13 @@ class MusicVideoCreator(tk.Tk):
     # ─────────────────────────────────────────────────────────────
     def _build_ui(self):
         callbacks = {
-            "new":                self._new_project,
-            "open":               self._load_project,
-            "save":               self._save_project,
-            "exit":               self.destroy,
-            "open_images":        self._file_open_images,
-            "open_audio":         self._file_open_audio,
+            "new":                  self._new_project,
+            "open":                 self._load_project,
+            "save":                 self._save_project,
+            "exit":                 self.destroy,
+            "add_image":            self._add_image_node,
+            "add_audio":            self._add_audio_node,
+            "get_selection_type":   self._get_selection_type,
             "view_toggle_assets":    self._view_toggle_assets,
             "view_toggle_inspector": self._view_toggle_inspector,
             "view_reset":            self._view_reset,
@@ -76,11 +77,10 @@ class MusicVideoCreator(tk.Tk):
                                         bg="#444", bd=0)
         self.workspace.pack(fill=tk.BOTH, expand=True)
 
-        self.asset_pane = tk.Frame(self.workspace, bg="#252525")
-        self.workspace.add(self.asset_pane, width=210, minsize=100, stretch="never")
-        self.asset_panel = AssetPanel(self.asset_pane, self.state,
-                                      self._on_assets_changed,
-                                      on_select=self._on_asset_selected)
+        self.project_pane = tk.Frame(self.workspace, bg="#252525")
+        self.workspace.add(self.project_pane, width=210, minsize=100, stretch="never")
+        self.project_panel = ProjectPanel(self.project_pane,
+                                          on_select=self._on_project_node_selected)
 
         self.content_pane = tk.Frame(self.workspace)
         self.workspace.add(self.content_pane, minsize=400, stretch="always")
@@ -168,16 +168,51 @@ class MusicVideoCreator(tk.Tk):
         self.summary_panel.set_generate_enabled(ready)
 
     # ─────────────────────────────────────────────────────────────
-    # Asset panel callbacks (File menu)
+    # Project panel callbacks
     # ─────────────────────────────────────────────────────────────
-    def _on_assets_changed(self):
-        pass  # reserved for future reactions (e.g. auto-populate timeline)
+    def _get_selection_type(self):
+        return self.project_panel.get_selected_type()
 
-    def _on_asset_selected(self, asset: dict):
-        if asset["type"] == "image":
-            self.inspector_panel.show_image(asset)
-        else:
-            self.inspector_panel.show_audio(asset)
+    def _on_project_node_selected(self, node: dict):
+        node_type = node.get("type")
+        if node_type == "image":
+            self.inspector_panel.show_image(node)
+        elif node_type == "audio":
+            self.inspector_panel.show_audio(node)
+        elif node_type == "video":
+            self.inspector_panel.show_video(node)
+
+    def _add_image_node(self):
+        item_id, node = self.project_panel.get_selected_item()
+        if item_id is None or node.get("type") not in ("video", "audio"):
+            messagebox.showinfo("Select Node",
+                "Select a video or audio node in the Project Panel first.")
+            return
+        paths = filedialog.askopenfilenames(
+            title="Add image(s) to project",
+            filetypes=[("Image files", "*.png *.jpg *.jpeg *.bmp *.gif"),
+                       ("All files", "*.*")]
+        )
+        for p in paths:
+            self.project_panel.add_node(item_id, "image", p)
+        if paths:
+            self.bottom_bar.set_status(f"Added {len(paths)} image(s) to project.")
+
+    def _add_audio_node(self):
+        item_id, node = self.project_panel.get_selected_item()
+        if item_id is None or node.get("type") != "video":
+            messagebox.showinfo("Select Node",
+                "Select the video node in the Project Panel first.")
+            return
+        paths = filedialog.askopenfilenames(
+            title="Add audio file(s) to project",
+            filetypes=[("Audio files", "*.mp3 *.wav *.aac *.ogg *.flac"),
+                       ("All files", "*.*")]
+        )
+        for p in paths:
+            self.project_panel.add_node(item_id, "audio", p)
+        if paths:
+            self.bottom_bar.set_status(f"Added {len(paths)} audio file(s) to project.")
 
     # ─────────────────────────────────────────────────────────────
     # View helpers — all use the same forget/re-add strategy
@@ -185,13 +220,13 @@ class MusicVideoCreator(tk.Tk):
 
     def _rebuild_panes(self):
         """Forget all panes and re-add in correct order based on visibility state."""
-        for pane in (self.asset_pane, self.content_pane, self.inspector_pane):
+        for pane in (self.project_pane, self.content_pane, self.inspector_pane):
             try:
                 self.workspace.forget(pane)
             except Exception:
                 pass
         if self._assets_visible.get():
-            self.workspace.add(self.asset_pane, width=self._last_sash_pos,
+            self.workspace.add(self.project_pane, width=self._last_sash_pos,
                                minsize=100, stretch="never")
         self.workspace.add(self.content_pane, minsize=400, stretch="always")
         if self._inspector_visible.get():
@@ -235,29 +270,6 @@ class MusicVideoCreator(tk.Tk):
         self._last_inspector_w = 240
         self._rebuild_panes()
 
-    def _file_open_images(self):
-        paths = filedialog.askopenfilenames(
-            title="Add image(s) to Assets",
-            filetypes=[("Image files", "*.png *.jpg *.jpeg *.bmp *.gif"), ("All files", "*.*")]
-        )
-        added = 0
-        for p in paths:
-            if self.asset_panel.add_asset(p, "image"):
-                added += 1
-        if added:
-            self.bottom_bar.set_status(f"Added {added} image(s) to Assets.")
-
-    def _file_open_audio(self):
-        paths = filedialog.askopenfilenames(
-            title="Add audio file(s) to Assets",
-            filetypes=[("Audio files", "*.mp3 *.wav *.aac *.ogg *.flac"), ("All files", "*.*")]
-        )
-        added = 0
-        for p in paths:
-            if self.asset_panel.add_asset(p, "audio"):
-                added += 1
-        if added:
-            self.bottom_bar.set_status(f"Added {added} audio file(s) to Assets.")
 
     # ─────────────────────────────────────────────────────────────
     # Keyboard shortcuts
@@ -295,6 +307,9 @@ class MusicVideoCreator(tk.Tk):
             new_project(path)
             self._reset_ui()
             self._project_path = path
+            project_name = os.path.splitext(os.path.basename(path))[0]
+            self.project_panel.set_root(project_name)
+            self.state.project_tree = self.project_panel.get_tree_data()
             self._update_title()
             project_dir = os.path.dirname(path)
             self.bottom_bar.set_status(
@@ -326,6 +341,7 @@ class MusicVideoCreator(tk.Tk):
             )
             return
         try:
+            self.state.project_tree = self.project_panel.get_tree_data()
             save_project(self.state, self._project_path)
             self.bottom_bar.set_status(f"Saved: {os.path.basename(self._project_path)}")
         except Exception as exc:
@@ -338,10 +354,10 @@ class MusicVideoCreator(tk.Tk):
 
         self.state.switch_points = []
         self.state.transcription_words = []
-        self.state.assets = []
+        self.state.project_tree = None
         self.image_list.clear_all()
         self.lyrics_controller.reset()
-        self.asset_panel.clear()
+        self.project_panel.clear()
         self.inspector_panel.clear()
         self.main_notebook.disable_lyrics_tab()
 
@@ -352,10 +368,10 @@ class MusicVideoCreator(tk.Tk):
     def _apply_project(self, data: dict, filepath: str):
         self._reset_ui()
 
-        assets = data.get("assets", [])
-        if assets:
-            self.state.assets = assets
-            self.asset_panel.rebuild()
+        tree_data = data.get("project_tree")
+        if tree_data:
+            self.project_panel.rebuild(tree_data)
+            self.state.project_tree = tree_data
 
         audio_path = data.get("audio_path")
         if audio_path:
