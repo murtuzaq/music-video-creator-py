@@ -14,17 +14,22 @@ class BottomBar:
         self.progress.pack_forget()
 
         self.status_var = tk.StringVar(value="Ready.")
-        tk.Label(
+        self._status_lbl = tk.Label(
             self.frame,
             textvariable=self.status_var,
             bg="#2b2b2b",
             fg="#aaa"
-        ).pack(side=tk.LEFT, padx=16)
+        )
+        self._status_lbl.pack(side=tk.LEFT, padx=16)
 
     # ─────────────────────────────────────────
 
     def set_status(self, msg):
         self.status_var.set(msg)
+
+    def apply_theme(self, colors):
+        self.frame.config(bg=colors["bg_medium"])
+        self._status_lbl.config(bg=colors["bg_medium"], fg=colors["fg_secondary"])
 
     def set_progress(self, running):
         if running:

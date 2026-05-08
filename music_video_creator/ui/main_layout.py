@@ -18,3 +18,6 @@ class MainLayout:
         )
         self.right.pack(side=tk.RIGHT, fill=tk.Y, padx=(10, 0))
         self.right.pack_propagate(False)
+
+    def apply_theme(self, colors):
+        self.right.config(bg=colors["bg_darkest"])

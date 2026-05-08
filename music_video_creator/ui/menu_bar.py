@@ -44,6 +44,15 @@ class MenuBar(tk.Menu):
         project_menu.add_command(label="Exit",                                command=callbacks["exit"])
         self.add_cascade(label="Project", menu=project_menu)
 
+        # ── Window menu ───────────────────────────────────────────
+        _theme_var = variables.get("theme")
+        window_menu = tk.Menu(self, tearoff=0)
+        window_menu.add_radiobutton(label="Dark",  value="dark",  variable=_theme_var,
+                                    command=lambda: callbacks["set_theme"]("dark"))
+        window_menu.add_radiobutton(label="Light", value="light", variable=_theme_var,
+                                    command=lambda: callbacks["set_theme"]("light"))
+        self.add_cascade(label="Window", menu=window_menu)
+
         root.config(menu=self)
 
     def _update_file_items(self):

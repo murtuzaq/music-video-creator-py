@@ -50,6 +50,9 @@ class AudioSection:
             padx=10
         ).pack(side=tk.RIGHT)
 
+    def apply_theme(self, colors):
+        pass  # AudioSection uses system-default frame bg; accent buttons keep fixed colors
+
     def set_audio_name(self, name):
         self.audio_label.config(text=name, fg="black")
 

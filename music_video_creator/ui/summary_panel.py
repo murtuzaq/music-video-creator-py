@@ -4,7 +4,8 @@ from tkinter import ttk
 
 class SummaryPanel:
     def __init__(self, parent, on_generate):
-        self.audio_var = tk.StringVar(value="—")
+        self._parent = parent
+        self.audio_var  = tk.StringVar(value="—")
         self.images_var = tk.StringVar(value="0")
         self.points_var = tk.StringVar(value="0 / 0")
         self.output_var = tk.StringVar(value="—")
@@ -41,26 +42,43 @@ class SummaryPanel:
     def set_output(self, value):
         self.output_var.set(value)
 
+    def apply_theme(self, colors):
+        bg = colors["bg_darkest"]
+        self._title_lbl.config(bg=bg, fg=colors["fg_primary"])
+        self._info_frame.config(bg=bg)
+        for lbl_key, val_key in self._row_widgets:
+            lbl_key.config(bg=bg, fg=colors["fg_secondary"])
+            val_key.config(bg=bg, fg=colors["fg_primary"])
+        for frame in self._row_frames:
+            frame.config(bg=bg)
+
     def __build(self, parent):
-        tk.Label(parent, text="Summary", font=("Helvetica", 11, "bold"),
-                 bg="#1e1e1e", fg="white").pack(pady=(14, 6))
+        self._title_lbl = tk.Label(parent, text="Summary", font=("Helvetica", 11, "bold"),
+                                   bg="#1e1e1e", fg="white")
+        self._title_lbl.pack(pady=(14, 6))
         ttk.Separator(parent, orient=tk.HORIZONTAL).pack(fill=tk.X, padx=10)
 
-        info = tk.Frame(parent, bg="#1e1e1e")
-        info.pack(fill=tk.X, padx=14, pady=10)
+        self._info_frame = tk.Frame(parent, bg="#1e1e1e")
+        self._info_frame.pack(fill=tk.X, padx=14, pady=10)
 
-        self.__row(info, "Audio:", self.audio_var)
-        self.__row(info, "Images:", self.images_var)
-        self.__row(info, "Load points:", self.points_var)
-        self.__row(info, "Output:", self.output_var)
+        self._row_widgets = []
+        self._row_frames  = []
+        self.__row(self._info_frame, "Audio:",       self.audio_var)
+        self.__row(self._info_frame, "Images:",      self.images_var)
+        self.__row(self._info_frame, "Load points:", self.points_var)
+        self.__row(self._info_frame, "Output:",      self.output_var)
 
     def __row(self, parent, label, var):
         frame = tk.Frame(parent, bg="#1e1e1e")
         frame.pack(fill=tk.X, pady=2)
-        tk.Label(frame, text=label, bg="#1e1e1e", fg="#aaa", anchor="w", width=12).pack(side=tk.LEFT)
-        tk.Label(frame, textvariable=var, bg="#1e1e1e", fg="white", anchor="w",
-                 wraplength=140, justify=tk.LEFT).pack(side=tk.LEFT)
-        
+        lbl = tk.Label(frame, text=label, bg="#1e1e1e", fg="#aaa", anchor="w", width=12)
+        lbl.pack(side=tk.LEFT)
+        val = tk.Label(frame, textvariable=var, bg="#1e1e1e", fg="white", anchor="w",
+                       wraplength=140, justify=tk.LEFT)
+        val.pack(side=tk.LEFT)
+        self._row_frames.append(frame)
+        self._row_widgets.append((lbl, val))
+
     def set_generate_enabled(self, enabled):
         if enabled:
             self.generate_btn.config(state=tk.NORMAL)

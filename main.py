@@ -23,6 +23,7 @@ from music_video_creator.ui.lyrics_tab import LyricsTab
 from music_video_creator.ui.image_timing_tab import ImageTimingTab
 from music_video_creator.ui.image_list import ImageList
 from music_video_creator.ui.lyrics_controller import LyricsController
+from music_video_creator.ui.theme import THEMES
 
 class MusicVideoCreator(tk.Tk):
     def __init__(self):
@@ -32,11 +33,12 @@ class MusicVideoCreator(tk.Tk):
         self.resizable(True, True)
 
         self.state = AppState()
-        self._project_path   = None
+        self._project_path      = None
         self._assets_visible    = tk.BooleanVar(value=True)
         self._inspector_visible = tk.BooleanVar(value=True)
         self._last_sash_pos     = 210
         self._last_inspector_w  = 240
+        self._theme_name        = tk.StringVar(value="dark")
 
         self.audio_transcriber = AudioTranscriber()
         self.lyric_file_loader = LyricFileLoader()
@@ -62,10 +64,12 @@ class MusicVideoCreator(tk.Tk):
             "view_toggle_assets":    self._view_toggle_assets,
             "view_toggle_inspector": self._view_toggle_inspector,
             "view_reset":            self._view_reset,
+            "set_theme":             self._set_theme,
         }
         variables = {
             "assets_visible":    self._assets_visible,
             "inspector_visible": self._inspector_visible,
+            "theme":             self._theme_name,
         }
         MenuBar(self, callbacks, variables)
         self.ribbon_bar = RibbonBar(self, callbacks)
@@ -270,6 +274,23 @@ class MusicVideoCreator(tk.Tk):
         self._last_inspector_w = 240
         self._rebuild_panes()
 
+    # ─────────────────────────────────────────────────────────────
+    # Theme
+    # ─────────────────────────────────────────────────────────────
+    def _set_theme(self, name: str):
+        colors = THEMES[name]
+        self._theme_name.set(name)
+        self.workspace.config(bg=colors["sash"])
+        self.project_pane.config(bg=colors["bg_dark"])
+        self.inspector_pane.config(bg=colors["bg_darkest"])
+        self.header_bar.apply_theme(colors)
+        self.bottom_bar.apply_theme(colors)
+        self.main_layout.apply_theme(colors)
+        self.project_panel.apply_theme(colors)
+        self.inspector_panel.apply_theme(colors)
+        self.summary_panel.apply_theme(colors)
+        self.audio_section.apply_theme(colors)
+        self.lyrics_tab.apply_theme(colors)
 
     # ─────────────────────────────────────────────────────────────
     # Keyboard shortcuts

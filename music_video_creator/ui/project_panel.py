@@ -31,30 +31,31 @@ class ProjectPanel:
         self.frame = tk.Frame(parent, bg="#252525")
         self.frame.pack(fill=tk.BOTH, expand=True)
 
-        tk.Label(self.frame, text="Project", bg="#252525", fg="white",
-                 font=("Helvetica", 10, "bold"),
-                 anchor="w", padx=10, pady=7).pack(fill=tk.X)
+        self._header_lbl = tk.Label(self.frame, text="Project", bg="#252525", fg="white",
+                                    font=("Helvetica", 10, "bold"),
+                                    anchor="w", padx=10, pady=7)
+        self._header_lbl.pack(fill=tk.X)
         ttk.Separator(self.frame, orient=tk.HORIZONTAL).pack(fill=tk.X)
 
-        style = ttk.Style()
-        style.theme_use("default")
-        style.configure("Project.Treeview",
-                        background="#252525",
-                        foreground="#cccccc",
-                        fieldbackground="#252525",
-                        borderwidth=0,
-                        rowheight=24,
-                        font=("Helvetica", 9))
-        style.map("Project.Treeview",
-                  background=[("selected", "#4a4a7a")],
-                  foreground=[("selected", "#ffffff")])
+        self._style = ttk.Style()
+        self._style.theme_use("default")
+        self._style.configure("Project.Treeview",
+                              background="#252525",
+                              foreground="#cccccc",
+                              fieldbackground="#252525",
+                              borderwidth=0,
+                              rowheight=24,
+                              font=("Helvetica", 9))
+        self._style.map("Project.Treeview",
+                        background=[("selected", "#4a4a7a")],
+                        foreground=[("selected", "#ffffff")])
 
-        container = tk.Frame(self.frame, bg="#252525")
-        container.pack(fill=tk.BOTH, expand=True)
+        self._container = tk.Frame(self.frame, bg="#252525")
+        self._container.pack(fill=tk.BOTH, expand=True)
 
-        self._tree = ttk.Treeview(container, style="Project.Treeview",
+        self._tree = ttk.Treeview(self._container, style="Project.Treeview",
                                    show="tree", selectmode="browse")
-        sb = ttk.Scrollbar(container, orient=tk.VERTICAL, command=self._tree.yview)
+        sb = ttk.Scrollbar(self._container, orient=tk.VERTICAL, command=self._tree.yview)
         self._tree.configure(yscrollcommand=sb.set)
         self._tree.bind("<MouseWheel>",
                         lambda e: self._tree.yview_scroll(int(-1 * e.delta / 120), "units"))
@@ -63,6 +64,18 @@ class ProjectPanel:
         self._tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
         self._tree.bind("<<TreeviewSelect>>", self._on_tree_select)
+
+    def apply_theme(self, colors):
+        self.frame.config(bg=colors["bg_dark"])
+        self._header_lbl.config(bg=colors["bg_dark"], fg=colors["fg_primary"])
+        self._container.config(bg=colors["bg_dark"])
+        self._style.configure("Project.Treeview",
+                              background=colors["bg_dark"],
+                              foreground=colors["fg_secondary_alt"],
+                              fieldbackground=colors["bg_dark"])
+        self._style.map("Project.Treeview",
+                        background=[("selected", colors["selected_bg"])],
+                        foreground=[("selected", colors["selected_fg"])])
 
     # ── Public API ────────────────────────────────────────────────
 

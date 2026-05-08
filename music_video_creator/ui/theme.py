@@ -1,0 +1,43 @@
+DARK = {
+    "bg_darkest":       "#1e1e1e",
+    "bg_dark":          "#252525",
+    "bg_medium":        "#2b2b2b",
+    "sash":             "#444",
+    "fg_primary":       "white",
+    "fg_secondary":     "#aaa",
+    "fg_secondary_alt": "#cccccc",
+    "fg_dim":           "#555",
+    "fg_dim_alt":       "#888",
+    "fg_value":         "#ddd",
+    "selected_bg":      "#4a4a7a",
+    "selected_fg":      "#ffffff",
+    "tooltip_bg":       "#ffffe0",
+    "text_bg":          "#252525",
+    "text_fg":          "#ddd",
+    "text_cursor":      "white",
+    "lyrics_word_fg":   "#ddd",
+    "lyrics_hover_bg":  "#555",
+}
+
+LIGHT = {
+    "bg_darkest":       "#ffffff",
+    "bg_dark":          "#f5f5f5",
+    "bg_medium":        "#e8e8e8",
+    "sash":             "#c8c8c8",
+    "fg_primary":       "#1a1a1a",
+    "fg_secondary":     "#666666",
+    "fg_secondary_alt": "#444444",
+    "fg_dim":           "#aaaaaa",
+    "fg_dim_alt":       "#888888",
+    "fg_value":         "#1a1a1a",
+    "selected_bg":      "#4a7abf",
+    "selected_fg":      "#ffffff",
+    "tooltip_bg":       "#ffffe0",
+    "text_bg":          "#ffffff",
+    "text_fg":          "#1a1a1a",
+    "text_cursor":      "#1a1a1a",
+    "lyrics_word_fg":   "#333333",
+    "lyrics_hover_bg":  "#c8c8c8",
+}
+
+THEMES = {"dark": DARK, "light": LIGHT}
