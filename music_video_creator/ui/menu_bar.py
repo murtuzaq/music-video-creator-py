@@ -25,10 +25,10 @@ class MenuBar(tk.Menu):
             command=callbacks["view_toggle_assets"],
         )
         view_menu.add_checkbutton(
-            label="Inspector",
-            variable=variables.get("inspector_visible"),
+            label="Asset Panel",
+            variable=variables.get("asset_panel_visible"),
             onvalue=True, offvalue=False,
-            command=callbacks["view_toggle_inspector"],
+            command=callbacks["view_toggle_asset_panel"],
         )
         view_menu.add_separator()
         view_menu.add_command(label="Reset View", command=callbacks["view_reset"])
