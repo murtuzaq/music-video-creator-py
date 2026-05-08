@@ -28,7 +28,7 @@ def _fmt_size(path: str) -> str:
 
 
 class InspectorPanel:
-    def __init__(self, parent):
+    def __init__(self, parent, on_close=None):
         self._pil_src      = None
         self._preview_lbl  = None
         self._current_type = None
@@ -38,10 +38,19 @@ class InspectorPanel:
         self.frame = tk.Frame(parent, bg="#1e1e1e")
         self.frame.pack(fill=tk.BOTH, expand=True)
 
-        self._header_lbl = tk.Label(self.frame, text="Inspector", bg="#1e1e1e", fg="white",
+        self._header_frame = tk.Frame(self.frame, bg="#1e1e1e")
+        self._header_frame.pack(fill=tk.X)
+        self._header_lbl = tk.Label(self._header_frame, text="Project Inspector",
+                                    bg="#1e1e1e", fg="white",
                                     font=("Helvetica", 10, "bold"),
                                     anchor="w", padx=10, pady=7)
-        self._header_lbl.pack(fill=tk.X)
+        self._header_lbl.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self._close_btn = tk.Button(self._header_frame, text="×", command=on_close,
+                                    bg="#1e1e1e", fg="#888", relief=tk.FLAT,
+                                    font=("Helvetica", 12), padx=8, pady=3,
+                                    cursor="hand2", activebackground="#2b2b2b",
+                                    activeforeground="white", bd=0)
+        self._close_btn.pack(side=tk.RIGHT)
         ttk.Separator(self.frame, orient=tk.HORIZONTAL).pack(fill=tk.X)
 
         self._body = tk.Frame(self.frame, bg="#1e1e1e")
@@ -58,7 +67,11 @@ class InspectorPanel:
         self._colors = colors
         bg = colors["bg_darkest"]
         self.frame.config(bg=bg)
+        self._header_frame.config(bg=bg)
         self._header_lbl.config(bg=bg, fg=colors["fg_primary"])
+        self._close_btn.config(bg=bg, fg=colors["fg_dim_alt"],
+                               activebackground=colors["bg_medium"],
+                               activeforeground=colors["fg_primary"])
         self._body.config(bg=bg)
         if self._current_type == "image":
             self.show_image(self._current_node)

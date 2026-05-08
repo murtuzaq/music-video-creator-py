@@ -24,11 +24,13 @@ class MusicVideoCreator(tk.Tk):
 
         self.state = AppState()
         self._project_path        = None
-        self._assets_visible      = tk.BooleanVar(value=True)
-        self._asset_panel_visible = tk.BooleanVar(value=True)
-        self._last_sash_pos       = 210
-        self._last_asset_w        = 210
-        self._theme_name          = tk.StringVar(value="dark")
+        self._assets_visible               = tk.BooleanVar(value=True)
+        self._project_inspector_visible    = tk.BooleanVar(value=True)
+        self._asset_inspector_visible      = tk.BooleanVar(value=True)
+        self._asset_panel_visible          = tk.BooleanVar(value=True)
+        self._last_sash_pos                = 210
+        self._last_asset_w                 = 210
+        self._theme_name                   = tk.StringVar(value="dark")
 
         self._build_ui()
         self._bind_shortcuts()
@@ -42,18 +44,20 @@ class MusicVideoCreator(tk.Tk):
             "open":                    self._load_project,
             "save":                    self._save_project,
             "exit":                    self.destroy,
-            "add_image":               self._add_image_node,
-            "add_audio":               self._add_audio_node,
-            "get_selection_type":      self._get_selection_type,
-            "view_toggle_assets":      self._view_toggle_assets,
-            "view_toggle_asset_panel": self._view_toggle_asset_panel,
-            "view_reset":              self._view_reset,
-            "set_theme":               self._set_theme,
+            "add_asset_folder":        self._add_asset_folder,
+            "view_toggle_assets":              self._view_toggle_assets,
+            "view_toggle_project_inspector":   self._view_toggle_project_inspector,
+            "view_toggle_asset_inspector":     self._view_toggle_asset_inspector,
+            "view_toggle_asset_panel":         self._view_toggle_asset_panel,
+            "view_reset":                      self._view_reset,
+            "set_theme":                       self._set_theme,
         }
         variables = {
-            "assets_visible":      self._assets_visible,
-            "asset_panel_visible": self._asset_panel_visible,
-            "theme":               self._theme_name,
+            "assets_visible":            self._assets_visible,
+            "project_inspector_visible": self._project_inspector_visible,
+            "asset_inspector_visible":   self._asset_inspector_visible,
+            "asset_panel_visible":       self._asset_panel_visible,
+            "theme":                     self._theme_name,
         }
         MenuBar(self, callbacks, variables)
         self.ribbon_bar = RibbonBar(self, callbacks)
@@ -69,7 +73,8 @@ class MusicVideoCreator(tk.Tk):
         self.project_pane = tk.Frame(self.workspace, bg="#252525")
         self.workspace.add(self.project_pane, width=210, minsize=100, stretch="never")
         self.project_panel = ProjectPanel(self.project_pane,
-                                          on_select=self._on_project_node_selected)
+                                          on_select=self._on_project_node_selected,
+                                          on_close=self._close_project_panel)
 
         # ── Inspector Column (center, stretches) ──────────────────
         self.inspector_column = tk.PanedWindow(self.workspace, orient=tk.VERTICAL,
@@ -80,18 +85,21 @@ class MusicVideoCreator(tk.Tk):
         self.project_inspector_frame = tk.Frame(self.inspector_column, bg="#1e1e1e")
         self.inspector_column.add(self.project_inspector_frame,
                                   height=300, minsize=80, stretch="always")
-        self.inspector_panel = InspectorPanel(self.project_inspector_frame)
+        self.inspector_panel = InspectorPanel(self.project_inspector_frame,
+                                              on_close=self._close_project_inspector)
 
         self.asset_inspector_frame = tk.Frame(self.inspector_column, bg="#1e1e1e")
         self.inspector_column.add(self.asset_inspector_frame,
                                   height=300, minsize=80, stretch="always")
-        self.asset_inspector_panel = AssetInspectorPanel(self.asset_inspector_frame)
+        self.asset_inspector_panel = AssetInspectorPanel(self.asset_inspector_frame,
+                                                          on_close=self._close_asset_inspector)
 
         # ── Asset Panel (right) ───────────────────────────────────
         self.asset_pane = tk.Frame(self.workspace, bg="#252525")
         self.workspace.add(self.asset_pane, width=210, minsize=100, stretch="never")
         self.asset_panel = AssetPanel(self.asset_pane,
-                                      on_select=self._on_asset_selected)
+                                      on_select=self._on_asset_selected,
+                                      on_close=self._close_asset_panel)
 
         self._build_bottom_bar()
 
@@ -101,9 +109,6 @@ class MusicVideoCreator(tk.Tk):
     # ─────────────────────────────────────────────────────────────
     # Panel callbacks
     # ─────────────────────────────────────────────────────────────
-    def _get_selection_type(self):
-        return self.project_panel.get_selected_type()
-
     def _on_project_node_selected(self, node: dict):
         node_type = node.get("type")
         if node_type == "image":
@@ -116,37 +121,25 @@ class MusicVideoCreator(tk.Tk):
     def _on_asset_selected(self, node: dict):
         self.asset_inspector_panel.show_asset(node)
 
-    def _add_image_node(self):
-        item_id, node = self.project_panel.get_selected_item()
-        if item_id is None or node.get("type") not in ("video", "audio"):
-            messagebox.showinfo("Select Node",
-                "Select a video or audio node in the Project Panel first.")
-            return
-        paths = filedialog.askopenfilenames(
-            title="Add image(s) to project",
-            filetypes=[("Image files", "*.png *.jpg *.jpeg *.bmp *.gif"),
-                       ("All files", "*.*")]
-        )
-        for p in paths:
-            self.project_panel.add_node(item_id, "image", p)
-        if paths:
-            self.bottom_bar.set_status(f"Added {len(paths)} image(s) to project.")
+    def _add_asset_folder(self):
+        self.asset_panel._load_folder()
 
-    def _add_audio_node(self):
-        item_id, node = self.project_panel.get_selected_item()
-        if item_id is None or node.get("type") != "video":
-            messagebox.showinfo("Select Node",
-                "Select the video node in the Project Panel first.")
-            return
-        paths = filedialog.askopenfilenames(
-            title="Add audio file(s) to project",
-            filetypes=[("Audio files", "*.mp3 *.wav *.aac *.ogg *.flac"),
-                       ("All files", "*.*")]
-        )
-        for p in paths:
-            self.project_panel.add_node(item_id, "audio", p)
-        if paths:
-            self.bottom_bar.set_status(f"Added {len(paths)} audio file(s) to project.")
+    # ── Close-button helpers (mirror View-menu toggles) ───────────
+    def _close_project_panel(self):
+        self._assets_visible.set(False)
+        self._rebuild_panes()
+
+    def _close_project_inspector(self):
+        self._project_inspector_visible.set(False)
+        self._rebuild_inspector_column()
+
+    def _close_asset_inspector(self):
+        self._asset_inspector_visible.set(False)
+        self._rebuild_inspector_column()
+
+    def _close_asset_panel(self):
+        self._asset_panel_visible.set(False)
+        self._rebuild_panes()
 
     # ─────────────────────────────────────────────────────────────
     # View helpers
@@ -177,6 +170,25 @@ class MusicVideoCreator(tk.Tk):
         if self._asset_panel_visible.get():
             self.workspace.sash_place(sash, total - self._last_asset_w, 0)
 
+    def _rebuild_inspector_column(self):
+        for frame in (self.project_inspector_frame, self.asset_inspector_frame):
+            try:
+                self.inspector_column.forget(frame)
+            except Exception:
+                pass
+        if self._project_inspector_visible.get():
+            self.inspector_column.add(self.project_inspector_frame,
+                                      height=300, minsize=80, stretch="always")
+        if self._asset_inspector_visible.get():
+            self.inspector_column.add(self.asset_inspector_frame,
+                                      height=300, minsize=80, stretch="always")
+
+    def _view_toggle_project_inspector(self):
+        self._rebuild_inspector_column()
+
+    def _view_toggle_asset_inspector(self):
+        self._rebuild_inspector_column()
+
     def _view_toggle_assets(self):
         if not self._assets_visible.get():
             try:
@@ -198,9 +210,12 @@ class MusicVideoCreator(tk.Tk):
 
     def _view_reset(self):
         self._assets_visible.set(True)
+        self._project_inspector_visible.set(True)
+        self._asset_inspector_visible.set(True)
         self._asset_panel_visible.set(True)
         self._last_sash_pos = 210
         self._last_asset_w  = 210
+        self._rebuild_inspector_column()
         self._rebuild_panes()
 
     # ─────────────────────────────────────────────────────────────

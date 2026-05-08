@@ -53,7 +53,7 @@ def _scan_folder(root_path: str) -> dict:
 
 
 class AssetPanel:
-    def __init__(self, parent, on_select=None):
+    def __init__(self, parent, on_select=None, on_close=None):
         self._on_select = on_select
         self._nodes     = {}   # item_id -> {"type", "path"}
         self._roots     = {}   # root_path -> item_id (top-level loaded folders)
@@ -72,15 +72,12 @@ class AssetPanel:
             font=("Helvetica", 10, "bold"), anchor="w", padx=10, pady=7,
         )
         self._header_lbl.pack(side=tk.LEFT, fill=tk.X, expand=True)
-
-        self._load_btn = tk.Button(
-            self._header_frame, text="+ Folder",
-            command=self._load_folder,
-            bg="#4a90d9", fg="white",
-            relief=tk.FLAT, padx=6, pady=2,
-            font=("Helvetica", 8),
-        )
-        self._load_btn.pack(side=tk.RIGHT, padx=(0, 6), pady=6)
+        self._close_btn = tk.Button(self._header_frame, text="×", command=on_close,
+                                    bg="#252525", fg="#888", relief=tk.FLAT,
+                                    font=("Helvetica", 12), padx=8, pady=3,
+                                    cursor="hand2", activebackground="#2b2b2b",
+                                    activeforeground="white", bd=0)
+        self._close_btn.pack(side=tk.RIGHT)
 
         ttk.Separator(self.frame, orient=tk.HORIZONTAL).pack(fill=tk.X)
 
@@ -117,18 +114,23 @@ class AssetPanel:
         sb.pack(side=tk.RIGHT, fill=tk.Y)
         self._tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
-        # right-click context menu (only shown on root folder nodes)
+        # right-click context menu
         self._ctx_menu = tk.Menu(self._tree, tearoff=0)
-        self._ctx_menu.add_command(label="Remove Folder",
-                                   command=self._remove_ctx_folder)
+        self._ctx_menu.add_command(label="Add Asset Folder…", command=self._load_folder)
+        self._ctx_menu.add_separator()
+        self._ctx_menu.add_command(label="Remove Folder", command=self._remove_ctx_folder)
 
     # ── Public API ────────────────────────────────────────────────
 
     def apply_theme(self, colors):
-        self.frame.config(bg=colors["bg_dark"])
-        self._header_frame.config(bg=colors["bg_dark"])
-        self._header_lbl.config(bg=colors["bg_dark"], fg=colors["fg_primary"])
-        self._container.config(bg=colors["bg_dark"])
+        bg = colors["bg_dark"]
+        self.frame.config(bg=bg)
+        self._header_frame.config(bg=bg)
+        self._header_lbl.config(bg=bg, fg=colors["fg_primary"])
+        self._close_btn.config(bg=bg, fg=colors["fg_dim_alt"],
+                               activebackground=colors["bg_medium"],
+                               activeforeground=colors["fg_primary"])
+        self._container.config(bg=bg)
         self._style.configure(
             "Asset.Treeview",
             background=colors["bg_dark"],
@@ -179,15 +181,18 @@ class AssetPanel:
 
     def _on_right_click(self, event):
         item = self._tree.identify_row(event.y)
-        if not item:
-            return
-        node = self._nodes.get(item)
-        if not node or node["type"] != "folder":
-            return
-        if self._tree.parent(item) != "":
-            return  # only root folders can be removed
-        self._tree.selection_set(item)
-        self._ctx_item = item
+        is_root_folder = (
+            item
+            and self._nodes.get(item, {}).get("type") == "folder"
+            and self._tree.parent(item) == ""
+        )
+        if is_root_folder:
+            self._tree.selection_set(item)
+            self._ctx_item = item
+            self._ctx_menu.entryconfig("Remove Folder", state=tk.NORMAL)
+        else:
+            self._ctx_item = None
+            self._ctx_menu.entryconfig("Remove Folder", state=tk.DISABLED)
         self._ctx_menu.post(event.x_root, event.y_root)
 
     def _remove_ctx_folder(self):

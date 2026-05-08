@@ -5,16 +5,12 @@ class MenuBar(tk.Menu):
     def __init__(self, root, callbacks: dict, variables: dict = None):
         super().__init__(root)
         variables = variables or {}
-        self._get_sel_type = callbacks.get("get_selection_type", lambda: None)
-
         # ── File menu ─────────────────────────────────────────────
-        self._file_menu = tk.Menu(self, tearoff=0,
-                                   postcommand=self._update_file_items)
-        self._file_menu.add_command(label="Add Image…", command=callbacks["add_image"])
-        self._file_menu.add_command(label="Add Audio…", command=callbacks["add_audio"])
-        self._file_menu.add_separator()
-        self._file_menu.add_command(label="Exit",       command=callbacks["exit"])
-        self.add_cascade(label="File", menu=self._file_menu)
+        file_menu = tk.Menu(self, tearoff=0)
+        file_menu.add_command(label="Add Asset Folder…", command=callbacks["add_asset_folder"])
+        file_menu.add_separator()
+        file_menu.add_command(label="Exit",              command=callbacks["exit"])
+        self.add_cascade(label="File", menu=file_menu)
 
         # ── View menu ─────────────────────────────────────────────
         view_menu = tk.Menu(self, tearoff=0)
@@ -23,6 +19,18 @@ class MenuBar(tk.Menu):
             variable=variables.get("assets_visible"),
             onvalue=True, offvalue=False,
             command=callbacks["view_toggle_assets"],
+        )
+        view_menu.add_checkbutton(
+            label="Project Inspector",
+            variable=variables.get("project_inspector_visible"),
+            onvalue=True, offvalue=False,
+            command=callbacks["view_toggle_project_inspector"],
+        )
+        view_menu.add_checkbutton(
+            label="Asset Inspector",
+            variable=variables.get("asset_inspector_visible"),
+            onvalue=True, offvalue=False,
+            command=callbacks["view_toggle_asset_inspector"],
         )
         view_menu.add_checkbutton(
             label="Asset Panel",
@@ -55,9 +63,3 @@ class MenuBar(tk.Menu):
 
         root.config(menu=self)
 
-    def _update_file_items(self):
-        sel = self._get_sel_type()
-        can_add_image = sel in ("video", "audio")
-        can_add_audio = sel == "video"
-        self._file_menu.entryconfig(0, state=tk.NORMAL if can_add_image else tk.DISABLED)
-        self._file_menu.entryconfig(1, state=tk.NORMAL if can_add_audio else tk.DISABLED)

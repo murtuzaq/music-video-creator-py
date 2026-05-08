@@ -23,7 +23,7 @@ def _make_icon(color: str):
 
 
 class ProjectPanel:
-    def __init__(self, parent, on_select=None):
+    def __init__(self, parent, on_select=None, on_close=None):
         self._on_select = on_select
         self._icons     = {t: _make_icon(c) for t, c in _ICON_SPEC.items()}
         self._nodes     = {}   # item_id -> {"type", "path", "name"}
@@ -31,10 +31,18 @@ class ProjectPanel:
         self.frame = tk.Frame(parent, bg="#252525")
         self.frame.pack(fill=tk.BOTH, expand=True)
 
-        self._header_lbl = tk.Label(self.frame, text="Project", bg="#252525", fg="white",
+        self._header_frame = tk.Frame(self.frame, bg="#252525")
+        self._header_frame.pack(fill=tk.X)
+        self._header_lbl = tk.Label(self._header_frame, text="Project", bg="#252525", fg="white",
                                     font=("Helvetica", 10, "bold"),
                                     anchor="w", padx=10, pady=7)
-        self._header_lbl.pack(fill=tk.X)
+        self._header_lbl.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self._close_btn = tk.Button(self._header_frame, text="×", command=on_close,
+                                    bg="#252525", fg="#888", relief=tk.FLAT,
+                                    font=("Helvetica", 12), padx=8, pady=3,
+                                    cursor="hand2", activebackground="#2b2b2b",
+                                    activeforeground="white", bd=0)
+        self._close_btn.pack(side=tk.RIGHT)
         ttk.Separator(self.frame, orient=tk.HORIZONTAL).pack(fill=tk.X)
 
         self._style = ttk.Style()
@@ -66,9 +74,14 @@ class ProjectPanel:
         self._tree.bind("<<TreeviewSelect>>", self._on_tree_select)
 
     def apply_theme(self, colors):
-        self.frame.config(bg=colors["bg_dark"])
-        self._header_lbl.config(bg=colors["bg_dark"], fg=colors["fg_primary"])
-        self._container.config(bg=colors["bg_dark"])
+        bg = colors["bg_dark"]
+        self.frame.config(bg=bg)
+        self._header_frame.config(bg=bg)
+        self._header_lbl.config(bg=bg, fg=colors["fg_primary"])
+        self._close_btn.config(bg=bg, fg=colors["fg_dim_alt"],
+                               activebackground=colors["bg_medium"],
+                               activeforeground=colors["fg_primary"])
+        self._container.config(bg=bg)
         self._style.configure("Project.Treeview",
                               background=colors["bg_dark"],
                               foreground=colors["fg_secondary_alt"],
