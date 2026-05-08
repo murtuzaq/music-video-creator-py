@@ -220,5 +220,6 @@ sample/
 output/
 *.mp4
 AstroProj/
+AstroProj-2/
 .claude/
 
