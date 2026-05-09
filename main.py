@@ -183,6 +183,7 @@ class MusicVideoCreator(tk.Tk):
                 ),
                 on_add_assets=self._add_assets_to_clip,
                 auto_space_var=self._auto_space_enabled,
+                get_children=lambda iid=item_id: self._get_clip_preview_children(iid),
             )
             self._on_asset_selection_change()
 
@@ -201,6 +202,15 @@ class MusicVideoCreator(tk.Tk):
             return
         for asset in self.asset_panel.get_selected_assets():
             self.project_panel.add_asset_to_clip(self._current_clip_id, asset)
+
+    def _get_clip_preview_children(self, clip_id: str) -> list:
+        result = []
+        for _, n in self.project_panel.get_children(clip_id):
+            node = dict(n)
+            if node.get("type") == "audio":
+                node["_audio_dur"] = _audio_file_duration(node.get("path"))
+            result.append(node)
+        return result
 
     def _auto_space_clip(self):
         clip_id = self._current_clip_id or self._current_asset_clip_id
@@ -230,6 +240,9 @@ class MusicVideoCreator(tk.Tk):
     def _on_asset_manual_adjust(self):
         self._auto_space_enabled.set(False)
 
+    def _refresh_clip_preview(self):
+        self.inspector_panel.refresh_clip_timeline()
+
     def _reorder_asset_in_clip(self, direction: int):
         if not self._current_asset_id:
             return
@@ -239,6 +252,7 @@ class MusicVideoCreator(tk.Tk):
             self._auto_space_clip()
             node = self.project_panel.get_node(self._current_asset_id)
             self.inspector_panel.update_asset_start_time(node.get("start_time") or 0.0)
+        self._refresh_clip_preview()
 
     def _update_reorder_buttons(self):
         if not self._current_asset_id:

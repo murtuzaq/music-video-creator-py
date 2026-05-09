@@ -30,6 +30,7 @@ class InspectorPanel:
         self._on_reorder             = None
         self._on_manual_adjust       = None
         self._auto_space_var         = None
+        self._get_children           = None
         self._project_total_duration = 0.0
         self._parent_duration        = 0.0
         self._colors                 = dict(_DARK)
@@ -100,7 +101,8 @@ class InspectorPanel:
             self.show_audio(self._current_node)
         elif self._current_type == "video_clip":
             self.show_video_clip(self._current_node, self._on_update,
-                                 self._on_add_assets, self._auto_space_var)
+                                 self._on_add_assets, self._auto_space_var,
+                                 self._get_children)
         elif self._current_type == "asset_in_clip":
             self.show_asset_in_clip(self._current_node, self._on_update,
                                     self._parent_duration, self._on_reorder,
@@ -134,14 +136,17 @@ class InspectorPanel:
         self._current_view = view
 
     def show_video_clip(self, node: dict, on_update=None,
-                        on_add_assets=None, auto_space_var=None):
+                        on_add_assets=None, auto_space_var=None,
+                        get_children=None):
         self._current_type   = "video_clip"
         self._current_node   = node
         self._on_update      = on_update
         self._on_add_assets  = on_add_assets
         self._auto_space_var = auto_space_var
+        self._get_children   = get_children
         self._clear()
-        view = VideoClipView(self._body, self._colors, on_update, on_add_assets, auto_space_var)
+        view = VideoClipView(self._body, self._colors, on_update, on_add_assets,
+                             auto_space_var, get_children)
         view.build(node)
         self._current_view = view
 
@@ -158,6 +163,10 @@ class InspectorPanel:
         view = AssetInClipView(self._body, self._colors, on_update, on_reorder, on_manual_adjust)
         view.build(node, parent_duration)
         self._current_view = view
+
+    def refresh_clip_timeline(self):
+        if self._current_view and hasattr(self._current_view, "refresh_timeline"):
+            self._current_view.refresh_timeline()
 
     def update_asset_start_time(self, start_time: float):
         if self._current_view and hasattr(self._current_view, "update_start_time"):
@@ -180,6 +189,7 @@ class InspectorPanel:
         self._on_reorder             = None
         self._on_manual_adjust       = None
         self._auto_space_var         = None
+        self._get_children           = None
         self._project_total_duration = 0.0
         self._parent_duration        = 0.0
         self._show_empty()
