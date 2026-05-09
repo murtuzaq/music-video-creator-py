@@ -38,7 +38,7 @@ class InspectorPanel:
 
         self._header_frame = tk.Frame(self.frame, bg="#1e1e1e")
         self._header_frame.pack(fill=tk.X)
-        self._header_lbl = tk.Label(self._header_frame, text="Project Inspector",
+        self._header_lbl = tk.Label(self._header_frame, text="Inspector",
                                     bg="#1e1e1e", fg="white",
                                     font=("Helvetica", 10, "bold"),
                                     anchor="w", padx=10, pady=7)

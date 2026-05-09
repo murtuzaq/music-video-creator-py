@@ -99,7 +99,7 @@ class MusicVideoCreator(tk.Tk):
                                           on_close=self._close_project_panel,
                                           on_remove_project=self._on_remove_project)
 
-        # ── Inspector Column (center, stretches) ──────────────────
+        # ── Inspector (center, stretches) ─────────────────────────
         self.inspector_column = tk.PanedWindow(self.workspace, orient=tk.VERTICAL,
                                                sashwidth=5, sashrelief=tk.FLAT,
                                                bg="#444", bd=0)
@@ -107,23 +107,30 @@ class MusicVideoCreator(tk.Tk):
 
         self.project_inspector_frame = tk.Frame(self.inspector_column, bg="#1e1e1e")
         self.inspector_column.add(self.project_inspector_frame,
-                                  height=300, minsize=80, stretch="always")
+                                  minsize=80, stretch="always")
         self.inspector_panel = InspectorPanel(self.project_inspector_frame,
                                               on_close=self._close_project_inspector)
 
-        self.asset_inspector_frame = tk.Frame(self.inspector_column, bg="#1e1e1e")
-        self.inspector_column.add(self.asset_inspector_frame,
-                                  height=300, minsize=80, stretch="always")
-        self.asset_inspector_panel = AssetInspectorPanel(self.asset_inspector_frame,
-                                                          on_close=self._close_asset_inspector)
-
         # ── Asset Panel (right) ───────────────────────────────────
         self.asset_pane = tk.Frame(self.workspace, bg="#252525")
-        self.workspace.add(self.asset_pane, width=210, minsize=100, stretch="never")
-        self.asset_panel = AssetPanel(self.asset_pane,
+        self.workspace.add(self.asset_pane, width=240, minsize=150, stretch="never")
+
+        self.asset_split = tk.PanedWindow(self.asset_pane, orient=tk.VERTICAL,
+                                          sashwidth=5, sashrelief=tk.FLAT,
+                                          bg="#444", bd=0)
+        self.asset_split.pack(fill=tk.BOTH, expand=True)
+
+        self.asset_tree_frame = tk.Frame(self.asset_split, bg="#252525")
+        self.asset_split.add(self.asset_tree_frame, height=300, minsize=100, stretch="always")
+        self.asset_panel = AssetPanel(self.asset_tree_frame,
                                       on_select=self._on_asset_selected,
                                       on_close=self._close_asset_panel,
                                       on_selection_change=self._on_asset_selection_change)
+
+        self.asset_inspector_frame = tk.Frame(self.asset_split, bg="#1e1e1e")
+        self.asset_split.add(self.asset_inspector_frame, height=250, minsize=80, stretch="never")
+        self.asset_inspector_panel = AssetInspectorPanel(self.asset_inspector_frame,
+                                                          on_close=self._close_asset_inspector)
 
         self._build_bottom_bar()
 
@@ -243,7 +250,7 @@ class MusicVideoCreator(tk.Tk):
 
     def _close_asset_inspector(self):
         self._asset_inspector_visible.set(False)
-        self._rebuild_inspector_column()
+        self._rebuild_asset_pane()
 
     def _close_asset_panel(self):
         self._asset_panel_visible.set(False)
@@ -279,23 +286,30 @@ class MusicVideoCreator(tk.Tk):
             self.workspace.sash_place(sash, total - self._last_asset_w, 0)
 
     def _rebuild_inspector_column(self):
-        for frame in (self.project_inspector_frame, self.asset_inspector_frame):
-            try:
-                self.inspector_column.forget(frame)
-            except Exception:
-                pass
+        try:
+            self.inspector_column.forget(self.project_inspector_frame)
+        except Exception:
+            pass
         if self._project_inspector_visible.get():
             self.inspector_column.add(self.project_inspector_frame,
-                                      height=300, minsize=80, stretch="always")
+                                      minsize=80, stretch="always")
+
+    def _rebuild_asset_pane(self):
+        for frame in (self.asset_tree_frame, self.asset_inspector_frame):
+            try:
+                self.asset_split.forget(frame)
+            except Exception:
+                pass
+        self.asset_split.add(self.asset_tree_frame, minsize=100, stretch="always")
         if self._asset_inspector_visible.get():
-            self.inspector_column.add(self.asset_inspector_frame,
-                                      height=300, minsize=80, stretch="always")
+            self.asset_split.add(self.asset_inspector_frame,
+                                 height=250, minsize=80, stretch="never")
 
     def _view_toggle_project_inspector(self):
         self._rebuild_inspector_column()
 
     def _view_toggle_asset_inspector(self):
-        self._rebuild_inspector_column()
+        self._rebuild_asset_pane()
 
     def _view_toggle_assets(self):
         if not self._assets_visible.get():
@@ -322,8 +336,9 @@ class MusicVideoCreator(tk.Tk):
         self._asset_inspector_visible.set(True)
         self._asset_panel_visible.set(True)
         self._last_sash_pos = 210
-        self._last_asset_w  = 210
+        self._last_asset_w  = 240
         self._rebuild_inspector_column()
+        self._rebuild_asset_pane()
         self._rebuild_panes()
 
     # ─────────────────────────────────────────────────────────────
@@ -334,10 +349,12 @@ class MusicVideoCreator(tk.Tk):
         self._theme_name.set(name)
         self.workspace.config(bg=colors["sash"])
         self.inspector_column.config(bg=colors["sash"])
+        self.asset_split.config(bg=colors["sash"])
         self.project_pane.config(bg=colors["bg_dark"])
         self.project_inspector_frame.config(bg=colors["bg_darkest"])
-        self.asset_inspector_frame.config(bg=colors["bg_darkest"])
         self.asset_pane.config(bg=colors["bg_dark"])
+        self.asset_tree_frame.config(bg=colors["bg_dark"])
+        self.asset_inspector_frame.config(bg=colors["bg_darkest"])
         self.header_bar.apply_theme(colors)
         self.bottom_bar.apply_theme(colors)
         self.project_panel.apply_theme(colors)
