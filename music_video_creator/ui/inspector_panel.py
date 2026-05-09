@@ -1,68 +1,36 @@
 import tkinter as tk
 from tkinter import ttk
-import os
 
-try:
-    from PIL import Image, ImageTk
-    _PIL = True
-except ImportError:
-    _PIL = False
+from .inspector_views.project_view       import ProjectView
+from .inspector_views.image_view         import ImageView
+from .inspector_views.audio_view         import AudioView
+from .inspector_views.video_clip_view    import VideoClipView
+from .inspector_views.asset_in_clip_view import AssetInClipView
 
 _DARK = {
-    "bg_darkest": "#1e1e1e",
-    "bg_dark":    "#252525",
-    "bg_medium":  "#2b2b2b",
-    "fg_primary": "white",
+    "bg_darkest":   "#1e1e1e",
+    "bg_dark":      "#252525",
+    "bg_medium":    "#2b2b2b",
+    "fg_primary":   "white",
     "fg_secondary": "#aaa",
-    "fg_dim":     "#555",
-    "fg_dim_alt": "#888",
-    "fg_value":   "#ddd",
-    "selected_bg": "#4a4a7a",
+    "fg_dim":       "#555",
+    "fg_dim_alt":   "#888",
+    "fg_value":     "#ddd",
+    "selected_bg":  "#4a4a7a",
 }
-
-
-def _fmt_duration(seconds: float) -> str:
-    total = int(seconds)
-    h, rem = divmod(total, 3600)
-    m, s = divmod(rem, 60)
-    if h:
-        return f"{h}:{m:02d}:{s:02d}"
-    return f"{m}:{s:02d}"
-
-
-def _fmt_size(path: str) -> str:
-    try:
-        b = os.path.getsize(path)
-        if b < 1024:      return f"{b} B"
-        if b < 1024 ** 2: return f"{b / 1024:.1f} KB"
-        return f"{b / 1024 ** 2:.1f} MB"
-    except Exception:
-        return "—"
 
 
 class InspectorPanel:
     def __init__(self, parent, on_close=None):
-        self._pil_src      = None
-        self._preview_lbl  = None
-        self._current_type = None
-        self._current_node = None
+        self._current_type           = None
+        self._current_node           = None
+        self._current_view           = None
         self._on_update              = None
         self._on_add_assets          = None
         self._on_reorder             = None
-        self._add_btn                = None
-        self._up_btn                 = None
-        self._down_btn               = None
         self._project_total_duration = 0.0
         self._parent_duration        = 0.0
-        self._timeline_increment     = 1.0
-        self._timeline_canvas        = None
         self._colors                 = dict(_DARK)
-        self._name_var               = tk.StringVar()
-        self._dur_var                = tk.StringVar()
-        self._start_var              = tk.StringVar()
-        self._scroll_outer           = None
-        self._scroll_canvas          = None
-        self._body_win               = None
 
         self.frame = tk.Frame(parent, bg="#1e1e1e")
         self.frame.pack(fill=tk.BOTH, expand=True)
@@ -140,46 +108,26 @@ class InspectorPanel:
         self._current_type = "image"
         self._current_node = asset
         self._clear()
-        path = asset["path"]
-        bg = self._colors["bg_darkest"]
+        view = ImageView(self._body, self._colors)
+        view.build(asset)
+        self._current_view = view
 
-        self._preview_lbl = tk.Label(self._body, bg=bg)
-        self._preview_lbl.pack(pady=(4, 10))
-
-        if _PIL:
-            try:
-                self._pil_src = Image.open(path)
-                self._refresh_preview()
-            except Exception:
-                self._pil_src = None
-                tk.Label(self._body, text="[no preview]",
-                         bg=bg, fg=self._colors["fg_dim"]).pack()
-
-        self._info_row("Name", os.path.basename(path))
-        self._info_row("Size", _fmt_size(path))
+    def show_audio(self, asset: dict):
+        self._current_type = "audio"
+        self._current_node = asset
+        self._clear()
+        view = AudioView(self._body, self._colors)
+        view.build(asset)
+        self._current_view = view
 
     def show_project(self, node: dict, total_duration: float = 0.0):
         self._current_type           = "video"
         self._current_node           = node
         self._project_total_duration = total_duration
         self._clear()
-        name = node.get("name") or "Untitled Project"
-        bg   = self._colors["bg_darkest"]
-        tk.Label(self._body, text="📹", bg=bg, fg="#e05c00",
-                 font=("Helvetica", 40)).pack(pady=(14, 6))
-        self._info_row("Name",     name)
-        self._info_row("Duration", _fmt_duration(total_duration))
-
-    def show_audio(self, asset: dict):
-        self._current_type = "audio"
-        self._current_node = asset
-        self._clear()
-        path = asset["path"]
-        bg = self._colors["bg_darkest"]
-        tk.Label(self._body, text="♪", bg=bg, fg="#4a90d9",
-                 font=("Helvetica", 52)).pack(pady=(20, 8))
-        self._info_row("Name", os.path.basename(path))
-        self._info_row("Size", _fmt_size(path))
+        view = ProjectView(self._body, self._colors)
+        view.build(node, total_duration)
+        self._current_view = view
 
     def show_video_clip(self, node: dict, on_update=None, on_add_assets=None):
         self._current_type  = "video_clip"
@@ -187,70 +135,9 @@ class InspectorPanel:
         self._on_update     = on_update
         self._on_add_assets = on_add_assets
         self._clear()
-        bg = self._colors["bg_darkest"]
-
-        icon_row = tk.Frame(self._body, bg=bg)
-        icon_row.pack(fill=tk.X, pady=(14, 8))
-        tk.Label(icon_row, text="🎞", bg=bg, fg="#9b59b6",
-                 font=("Helvetica", 36)).pack(side=tk.LEFT)
-        self._add_btn = tk.Button(icon_row, text="+ Add",
-                                  command=self._do_add_assets,
-                                  bg="#555555", fg="#999",
-                                  activebackground="#555555", activeforeground="#999",
-                                  relief=tk.FLAT, bd=0, padx=10, pady=5,
-                                  font=("Helvetica", 9, "bold"), cursor="")
-        self._add_btn.pack(side=tk.RIGHT, padx=4)
-
-        self._field_label("Name")
-        self._name_var.set(node.get("name") or "")
-        tk.Entry(self._body, textvariable=self._name_var,
-                 bg=self._colors.get("bg_dark", "#252525"),
-                 fg=self._colors["fg_value"],
-                 insertbackground=self._colors["fg_primary"],
-                 relief=tk.FLAT, bd=4,
-                 font=("Helvetica", 9)).pack(fill=tk.X, pady=(0, 8))
-
-        self._field_label("Duration (seconds)")
-        dur = node.get("duration")
-        self._dur_var.set(str(dur) if dur is not None else "0")
-        tk.Entry(self._body, textvariable=self._dur_var,
-                 bg=self._colors.get("bg_dark", "#252525"),
-                 fg=self._colors["fg_value"],
-                 insertbackground=self._colors["fg_primary"],
-                 relief=tk.FLAT, bd=4,
-                 font=("Helvetica", 9)).pack(fill=tk.X, pady=(0, 12))
-
-        tk.Button(self._body, text="Apply Changes",
-                  command=self._apply_clip_changes,
-                  bg="#9b59b6", fg="white",
-                  activebackground="#7d3c98", activeforeground="white",
-                  relief=tk.FLAT, bd=0, padx=10, pady=5,
-                  font=("Helvetica", 9, "bold"), cursor="hand2").pack(anchor="w")
-
-    def set_reorder_button_state(self, can_go_up: bool, can_go_down: bool):
-        for btn, enabled in ((self._up_btn, can_go_up), (self._down_btn, can_go_down)):
-            if not btn:
-                continue
-            try:
-                btn.config(state=tk.NORMAL if enabled else tk.DISABLED,
-                           cursor="hand2" if enabled else "")
-            except tk.TclError:
-                pass
-
-    def set_add_button_state(self, enabled: bool):
-        if not self._add_btn:
-            return
-        try:
-            if enabled:
-                self._add_btn.config(bg="#28a745", fg="white",
-                                     activebackground="#1e7e34", activeforeground="white",
-                                     cursor="hand2")
-            else:
-                self._add_btn.config(bg="#555555", fg="#999",
-                                     activebackground="#555555", activeforeground="#999",
-                                     cursor="")
-        except tk.TclError:
-            pass
+        view = VideoClipView(self._body, self._colors, on_update, on_add_assets)
+        view.build(node)
+        self._current_view = view
 
     def show_asset_in_clip(self, node: dict, on_update=None,
                            parent_duration: float = 0.0, on_reorder=None):
@@ -259,217 +146,36 @@ class InspectorPanel:
         self._on_update       = on_update
         self._on_reorder      = on_reorder
         self._parent_duration = parent_duration
-        self._add_btn         = None
         self._clear()
-        bg    = self._colors["bg_darkest"]
-        ntype = node.get("type", "image")
-        path  = node.get("path") or ""
+        view = AssetInClipView(self._body, self._colors, on_update, on_reorder)
+        view.build(node, parent_duration)
+        self._current_view = view
 
-        # ── order buttons ─────────────────────────────────────────
-        order_row = tk.Frame(self._body, bg=bg)
-        order_row.pack(fill=tk.X, pady=(8, 2))
-        btn_style = dict(relief=tk.FLAT, bd=0, padx=10, pady=3,
-                         font=("Helvetica", 9, "bold"), cursor="hand2",
-                         bg=self._colors.get("bg_dark", "#252525"),
-                         fg=self._colors["fg_value"],
-                         activebackground=self._colors.get("bg_medium", "#2b2b2b"),
-                         activeforeground=self._colors["fg_primary"])
-        self._up_btn   = tk.Button(order_row, text="▲  Up",
-                                   command=lambda: self._do_reorder(-1), **btn_style)
-        self._down_btn = tk.Button(order_row, text="▼  Down",
-                                   command=lambda: self._do_reorder(1), **btn_style)
-        self._up_btn.pack(side=tk.LEFT, padx=(0, 4))
-        self._down_btn.pack(side=tk.LEFT)
+    def set_reorder_button_state(self, can_go_up: bool, can_go_down: bool):
+        if self._current_view and hasattr(self._current_view, "set_reorder_button_state"):
+            self._current_view.set_reorder_button_state(can_go_up, can_go_down)
 
-        # ── preview ───────────────────────────────────────────────
-        if ntype == "image" and _PIL and path:
-            try:
-                self._pil_src     = Image.open(path)
-                self._preview_lbl = tk.Label(self._body, bg=bg)
-                self._preview_lbl.pack(pady=(4, 6))
-                self._refresh_preview()
-            except Exception:
-                self._pil_src = None
-        elif ntype == "audio":
-            tk.Label(self._body, text="♪", bg=bg, fg="#4a90d9",
-                     font=("Helvetica", 32)).pack(pady=(8, 4))
-
-        # ── start-time field ──────────────────────────────────────
-        self._field_label("Start Time (seconds)")
-        self._start_var.set(str(node.get("start_time") or 0.0))
-        tk.Entry(self._body, textvariable=self._start_var,
-                 bg=self._colors.get("bg_dark", "#252525"),
-                 fg=self._colors["fg_value"],
-                 insertbackground=self._colors["fg_primary"],
-                 relief=tk.FLAT, bd=4,
-                 font=("Helvetica", 9)).pack(fill=tk.X, pady=(0, 6))
-
-        tk.Button(self._body, text="Apply Changes",
-                  command=self._apply_asset_in_clip,
-                  bg="#5cb85c", fg="white",
-                  activebackground="#449d44", activeforeground="white",
-                  relief=tk.FLAT, bd=0, padx=10, pady=4,
-                  font=("Helvetica", 9, "bold"), cursor="hand2").pack(anchor="w")
-
-        # ── timeline header row ───────────────────────────────────
-        hdr = tk.Frame(self._body, bg=bg)
-        hdr.pack(fill=tk.X, pady=(8, 2))
-        tk.Label(hdr, text="Timeline", bg=bg, fg=self._colors["fg_dim_alt"],
-                 font=("Helvetica", 8)).pack(side=tk.LEFT)
-        tk.Button(hdr, text="+", command=self._timeline_zoom_in,
-                  bg=self._colors.get("bg_dark", "#252525"),
-                  fg=self._colors["fg_value"],
-                  relief=tk.FLAT, bd=0, padx=6, pady=1,
-                  font=("Helvetica", 9, "bold"), cursor="hand2").pack(side=tk.RIGHT)
-        tk.Button(hdr, text="−", command=self._timeline_zoom_out,
-                  bg=self._colors.get("bg_dark", "#252525"),
-                  fg=self._colors["fg_value"],
-                  relief=tk.FLAT, bd=0, padx=6, pady=1,
-                  font=("Helvetica", 9, "bold"), cursor="hand2").pack(side=tk.RIGHT, padx=(0, 2))
-
-        # ── timeline canvas ───────────────────────────────────────
-        self._timeline_canvas = tk.Canvas(self._body,
-                                          bg=bg, highlightthickness=0, height=160)
-        self._timeline_canvas.pack(fill=tk.X, pady=(0, 4))
-        self._timeline_canvas.bind("<Configure>", lambda _e: self._draw_timeline())
-        self._timeline_canvas.bind("<Button-1>", self._on_timeline_click)
-        self._timeline_canvas.bind("<Enter>",
-            lambda _e: self._timeline_canvas.config(cursor="crosshair"))
-        self._timeline_canvas.bind("<Leave>",
-            lambda _e: self._timeline_canvas.config(cursor=""))
+    def set_add_button_state(self, enabled: bool):
+        if self._current_view and hasattr(self._current_view, "set_add_button_state"):
+            self._current_view.set_add_button_state(enabled)
 
     def clear(self):
-        self._pil_src                = None
-        self._preview_lbl            = None
         self._current_type           = None
         self._current_node           = None
+        self._current_view           = None
         self._on_update              = None
         self._on_add_assets          = None
         self._on_reorder             = None
-        self._add_btn                = None
-        self._up_btn                 = None
-        self._down_btn               = None
         self._project_total_duration = 0.0
         self._parent_duration        = 0.0
-        self._timeline_canvas        = None
-        self._timeline_increment     = 1.0
         self._show_empty()
 
     # ─────────────────────────────────────────────────────────────
     # Private
     # ─────────────────────────────────────────────────────────────
 
-    def _field_label(self, text: str):
-        bg = self._colors["bg_darkest"]
-        tk.Label(self._body, text=text, bg=bg,
-                 fg=self._colors["fg_dim_alt"],
-                 font=("Helvetica", 8), anchor="w").pack(fill=tk.X)
-
-    def _apply_clip_changes(self):
-        name = self._name_var.get().strip()
-        dur_raw = self._dur_var.get().strip()
-        try:
-            dur = float(dur_raw)
-            if dur < 0:
-                raise ValueError
-        except ValueError:
-            dur = 0.0
-        if not name:
-            name = self._current_node.get("name") or "Video Clip"
-        self._current_node["name"] = name
-        self._current_node["duration"] = dur
-        if self._on_update:
-            self._on_update(name, dur)
-
-    def _do_reorder(self, direction: int):
-        if self._on_reorder:
-            self._on_reorder(direction)
-
-    def _do_add_assets(self):
-        if self._on_add_assets:
-            self._on_add_assets()
-
-    def _apply_asset_in_clip(self):
-        try:
-            start_time = float(self._start_var.get().strip())
-            if start_time < 0:
-                raise ValueError
-        except ValueError:
-            start_time = 0.0
-        self._current_node["start_time"] = start_time
-        self._draw_timeline()
-        if self._on_update:
-            self._on_update(start_time)
-
-    def _timeline_zoom_in(self):
-        self._timeline_increment = max(0.1, round(self._timeline_increment / 2, 10))
-        self._draw_timeline()
-
-    def _timeline_zoom_out(self):
-        cap = max(1.0, self._parent_duration)
-        self._timeline_increment = min(cap, round(self._timeline_increment * 2, 10))
-        self._draw_timeline()
-
-    def _draw_timeline(self):
-        c = self._timeline_canvas
-        if not c:
-            return
-        try:
-            w = c.winfo_width()
-            h = c.winfo_height()
-        except tk.TclError:
-            return
-        if w <= 1 or h <= 1:
-            return
-
-        c.delete("all")
-        dim    = self._colors["fg_dim_alt"]
-        bg     = self._colors["bg_darkest"]
-        arrow  = "#28a745"
-
-        M_TOP  = 10
-        M_BOT  = 10
-        LINE_X = 55
-
-        duration = max(0.01, self._parent_duration)
-        try:
-            start_time = float(self._start_var.get() or 0)
-        except ValueError:
-            start_time = 0.0
-        inc = self._timeline_increment
-
-        usable   = h - M_TOP - M_BOT
-        px_per_s = usable / duration
-
-        # vertical timeline
-        c.create_line(LINE_X, M_TOP, LINE_X, h - M_BOT, fill=dim, width=2)
-
-        # tick marks + labels
-        t = 0.0
-        while t <= duration + 1e-9:
-            y = M_TOP + t * px_per_s
-            c.create_line(LINE_X - 8, y, LINE_X + 5, y, fill=dim, width=1)
-            label = f"{int(t)}s" if t == int(t) else f"{t:.1f}s"
-            c.create_text(LINE_X - 10, y, text=label, anchor="e",
-                          fill=dim, font=("Helvetica", 7))
-            t = round(t + inc, 10)
-
-        # arrow at start_time
-        st  = max(0.0, min(start_time, duration))
-        y_a = M_TOP + st * px_per_s
-        c.create_polygon(
-            LINE_X,      y_a,
-            LINE_X - 12, y_a - 6,
-            LINE_X - 12, y_a + 6,
-            fill=arrow, outline="",
-        )
-        label = f"{start_time:.2f}s"
-        c.create_text(LINE_X + 7, y_a, text=label, anchor="w",
-                      fill=arrow, font=("Helvetica", 7, "bold"))
-
     def _clear(self):
-        self._pil_src     = None
-        self._preview_lbl = None
+        self._current_view = None
         for w in self._body.winfo_children():
             w.destroy()
 
@@ -480,45 +186,12 @@ class InspectorPanel:
                  bg=bg, fg=self._colors["fg_dim"],
                  font=("Helvetica", 9), justify=tk.CENTER).pack(expand=True)
 
-    def _info_row(self, label: str, value: str):
-        bg = self._colors["bg_darkest"]
-        row = tk.Frame(self._body, bg=bg)
-        row.pack(fill=tk.X, pady=2)
-        tk.Label(row, text=label + ":", bg=bg, fg=self._colors["fg_dim_alt"],
-                 font=("Helvetica", 8), width=5, anchor="w").pack(side=tk.LEFT)
-        val_lbl = tk.Label(row, text=value, bg=bg, fg=self._colors["fg_value"],
-                           font=("Helvetica", 8), anchor="w", justify=tk.LEFT)
-        val_lbl.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        row.bind("<Configure>",
-                 lambda e, l=val_lbl: l.configure(wraplength=max(1, e.width - 52)))
-
     def _on_scroll_canvas_resize(self, event):
-        self._scroll_canvas.itemconfig(self._body_win, width=event.width - 20)
-        if self._pil_src:
-            self._refresh_preview()
+        new_width = event.width - 20
+        self._scroll_canvas.itemconfig(self._body_win, width=new_width)
+        if self._current_view:
+            self._current_view.on_resize(new_width)
 
     def _on_body_configure(self, event):
         self._scroll_canvas.configure(
             scrollregion=(0, 0, event.width + 20, event.height + 20))
-
-    def _on_timeline_click(self, event):
-        duration = max(0.01, self._parent_duration)
-        inc = self._timeline_increment
-        M_TOP = 10
-        usable = self._timeline_canvas.winfo_height() - M_TOP - 10
-        px_per_s = usable / duration
-        t = (event.y - M_TOP) / px_per_s
-        t_snapped = round(t / inc) * inc
-        t_snapped = max(0.0, min(t_snapped, duration))
-        self._start_var.set(f"{t_snapped:.2f}")
-        self._draw_timeline()
-
-    def _refresh_preview(self):
-        if not self._pil_src or not self._preview_lbl:
-            return
-        w = max(60, self._body.winfo_width() - 20)
-        img = self._pil_src.copy()
-        img.thumbnail((w, 240))
-        photo = ImageTk.PhotoImage(img)
-        self._preview_lbl.config(image=photo)
-        self._preview_lbl._photo = photo

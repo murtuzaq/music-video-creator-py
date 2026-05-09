@@ -1,15 +1,12 @@
 import tkinter as tk
 from tkinter import ttk
-import os
 
-try:
-    from PIL import Image, ImageTk
-    _PIL = True
-except ImportError:
-    _PIL = False
+from .asset_inspector_views.single_asset_view import SingleAssetView
+from .asset_inspector_views.multi_select_view  import MultiSelectView
 
 _DARK = {
     "bg_darkest": "#1e1e1e",
+    "bg_medium":  "#2b2b2b",
     "fg_primary": "white",
     "fg_dim":     "#555",
     "fg_dim_alt": "#888",
@@ -17,22 +14,10 @@ _DARK = {
 }
 
 
-def _fmt_size(path: str) -> str:
-    try:
-        b = os.path.getsize(path)
-        if b < 1024:      return f"{b} B"
-        if b < 1024 ** 2: return f"{b / 1024:.1f} KB"
-        return f"{b / 1024 ** 2:.1f} MB"
-    except Exception:
-        return "—"
-
-
 class AssetInspectorPanel:
     def __init__(self, parent, on_close=None):
-        self._pil_src      = None
-        self._preview_lbl  = None
         self._current_node = None
-        self._multi_photos = []   # keep thumbnail refs for multi-select
+        self._current_view = None
         self._colors       = dict(_DARK)
 
         self.frame = tk.Frame(parent, bg="#1e1e1e")
@@ -78,169 +63,40 @@ class AssetInspectorPanel:
 
     def show_asset(self, node: dict):
         self._current_node = node
-        ntype = node.get("type", "")
-        if ntype == "image":
-            self._show_image(node["path"])
-        elif ntype == "audio":
-            self._show_audio(node["path"])
-        else:
-            self._show_empty()
+        self._clear()
+        view = SingleAssetView(self._body, self._colors)
+        view.build(node)
+        self._current_view = view
 
     def show_multi_select(self, nodes: list):
         self._current_node = None
-        self._clear_body()
-        bg = self._colors["bg_darkest"]
-
+        self._clear()
         if not nodes:
             self._show_empty()
             return
-
-        count = len(nodes)
-        tk.Label(self._body, text=f"{count} asset{'s' if count > 1 else ''} selected",
-                 bg=bg, fg=self._colors["fg_dim_alt"],
-                 font=("Helvetica", 8)).pack(anchor="w", pady=(0, 4))
-
-        scroll_frame = tk.Frame(self._body, bg=bg)
-        scroll_frame.pack(fill=tk.BOTH, expand=True)
-
-        c = tk.Canvas(scroll_frame, bg=bg, highlightthickness=0)
-        vsb = ttk.Scrollbar(scroll_frame, orient=tk.VERTICAL, command=c.yview)
-        c.configure(yscrollcommand=vsb.set)
-        c.bind("<MouseWheel>",
-               lambda e: c.yview_scroll(int(-1 * e.delta / 120), "units"))
-
-        inner = tk.Frame(c, bg=bg)
-        win   = c.create_window((0, 0), window=inner, anchor="nw")
-
-        THUMB = 60
-        PAD   = 3
-
-        # Build all thumbnail labels up front (fixed size, created once)
-        labels = []
-        for node in nodes:
-            ntype = node.get("type", "image")
-            if ntype == "image" and _PIL:
-                try:
-                    img = Image.open(node.get("path", ""))
-                    img.thumbnail((THUMB, THUMB))
-                    photo = ImageTk.PhotoImage(img)
-                    lbl = tk.Label(inner, image=photo, bg=bg,
-                                   width=THUMB, height=THUMB)
-                    lbl._photo = photo
-                    self._multi_photos.append(photo)
-                except Exception:
-                    lbl = tk.Label(inner, text="?", bg=bg,
-                                   fg=self._colors["fg_dim"],
-                                   font=("Helvetica", 18),
-                                   width=THUMB // 8, height=THUMB // 16)
-            else:
-                lbl = tk.Label(inner, text="♪", bg=bg, fg="#4a90d9",
-                               font=("Helvetica", 22),
-                               width=THUMB // 8, height=THUMB // 16)
-            labels.append(lbl)
-
-        state = {"cols": 0}
-
-        def _layout(_event=None):
-            w = inner.winfo_width()
-            if w <= 1:
-                return
-            cols = max(1, w // (THUMB + PAD * 2))
-            if cols == state["cols"]:
-                return
-            # clear old column weights
-            for col in range(state["cols"]):
-                inner.columnconfigure(col, weight=0, minsize=0)
-            state["cols"] = cols
-            for col in range(cols):
-                inner.columnconfigure(col, weight=1)
-            for i, lbl in enumerate(labels):
-                lbl.grid(row=i // cols, column=i % cols,
-                         padx=PAD, pady=PAD, sticky="nsew")
-
-        def _update_scroll(_event=None):
-            c.configure(scrollregion=c.bbox("all"))
-
-        inner.bind("<Configure>", lambda e: (_layout(), _update_scroll()))
-        c.bind("<Configure>", lambda e: c.itemconfig(win, width=e.width))
-
-        vsb.pack(side=tk.RIGHT, fill=tk.Y)
-        c.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        view = MultiSelectView(self._body, self._colors)
+        view.build(nodes)
+        self._current_view = view
 
     def clear(self):
         self._current_node = None
+        self._current_view = None
         self._show_empty()
 
     # ── Private ───────────────────────────────────────────────────
 
-    def _show_image(self, path: str):
-        self._clear_body()
-        bg = self._colors["bg_darkest"]
-
-        self._preview_lbl = tk.Label(self._body, bg=bg)
-        self._preview_lbl.pack(pady=(4, 8))
-
-        if _PIL:
-            try:
-                self._pil_src = Image.open(path)
-                self._refresh_preview()
-            except Exception:
-                self._pil_src = None
-                tk.Label(self._body, text="[no preview]",
-                         bg=bg, fg=self._colors["fg_dim"]).pack()
-
-        self._info_row("Name", os.path.basename(path))
-        self._info_row("Size", _fmt_size(path))
-        self._info_row("Type", os.path.splitext(path)[1].upper().lstrip("."))
-
-    def _show_audio(self, path: str):
-        self._clear_body()
-        bg = self._colors["bg_darkest"]
-        tk.Label(self._body, text="♪", bg=bg, fg="#4a90d9",
-                 font=("Helvetica", 40)).pack(pady=(14, 6))
-        self._info_row("Name", os.path.basename(path))
-        self._info_row("Size", _fmt_size(path))
-        self._info_row("Type", os.path.splitext(path)[1].upper().lstrip("."))
-
-    def _show_empty(self):
-        self._clear_body()
-        bg = self._colors["bg_darkest"]
-        tk.Label(
-            self._body,
-            text="Select an asset\nto preview",
-            bg=bg, fg=self._colors["fg_dim"],
-            font=("Helvetica", 9), justify=tk.CENTER,
-        ).pack(expand=True)
-
-    def _clear_body(self):
-        self._pil_src     = None
-        self._preview_lbl = None
-        self._multi_photos.clear()
+    def _clear(self):
+        self._current_view = None
         for w in self._body.winfo_children():
             w.destroy()
 
-    def _info_row(self, label: str, value: str):
+    def _show_empty(self):
+        self._clear()
         bg = self._colors["bg_darkest"]
-        row = tk.Frame(self._body, bg=bg)
-        row.pack(fill=tk.X, pady=2)
-        tk.Label(row, text=label + ":", bg=bg, fg=self._colors["fg_dim_alt"],
-                 font=("Helvetica", 8), width=5, anchor="w").pack(side=tk.LEFT)
-        val_lbl = tk.Label(row, text=value, bg=bg, fg=self._colors["fg_value"],
-                           font=("Helvetica", 8), anchor="w", justify=tk.LEFT)
-        val_lbl.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        row.bind("<Configure>",
-                 lambda e, l=val_lbl: l.configure(wraplength=max(1, e.width - 52)))
+        tk.Label(self._body, text="Select an asset\nto preview",
+                 bg=bg, fg=self._colors["fg_dim"],
+                 font=("Helvetica", 9), justify=tk.CENTER).pack(expand=True)
 
     def _on_resize(self, _event):
-        if self._pil_src:
-            self._refresh_preview()
-
-    def _refresh_preview(self):
-        if not self._pil_src or not self._preview_lbl:
-            return
-        w = max(60, self._body.winfo_width() - 20)
-        img = self._pil_src.copy()
-        img.thumbnail((w, 160))
-        photo = ImageTk.PhotoImage(img)
-        self._preview_lbl.config(image=photo)
-        self._preview_lbl._photo = photo
+        if self._current_view:
+            self._current_view.on_resize(self._body.winfo_width())
