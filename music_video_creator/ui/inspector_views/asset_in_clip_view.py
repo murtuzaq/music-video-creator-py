@@ -65,19 +65,13 @@ class AssetInClipView:
         # ── start-time field ──────────────────────────────────────
         field_label(self._body, "Start Time (seconds)", self._colors)
         self._start_var.set(str(node.get("start_time") or 0.0))
+        self._start_var.trace_add("write", self._on_start_change)
         tk.Entry(self._body, textvariable=self._start_var,
                  bg=self._colors.get("bg_dark", "#252525"),
                  fg=self._colors["fg_value"],
                  insertbackground=self._colors["fg_primary"],
                  relief=tk.FLAT, bd=4,
-                 font=("Helvetica", 9)).pack(fill=tk.X, pady=(0, 6))
-
-        tk.Button(self._body, text="Apply Changes",
-                  command=self._apply_changes,
-                  bg="#5cb85c", fg="white",
-                  activebackground="#449d44", activeforeground="white",
-                  relief=tk.FLAT, bd=0, padx=10, pady=4,
-                  font=("Helvetica", 9, "bold"), cursor="hand2").pack(anchor="w")
+                 font=("Helvetica", 9)).pack(fill=tk.X, pady=(0, 8))
 
         # ── timeline header ───────────────────────────────────────
         hdr = tk.Frame(self._body, bg=bg)
@@ -125,13 +119,13 @@ class AssetInClipView:
         if self._on_reorder:
             self._on_reorder(direction)
 
-    def _apply_changes(self):
+    def _on_start_change(self, *_):
         try:
             start_time = float(self._start_var.get().strip())
             if start_time < 0:
                 raise ValueError
         except ValueError:
-            start_time = 0.0
+            return
         self._node["start_time"] = start_time
         self._draw_timeline()
         if self._on_update:
