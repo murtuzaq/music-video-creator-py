@@ -15,6 +15,26 @@ from music_video_creator.ui.header_bar import HeaderBar
 from music_video_creator.ui.theme import THEMES
 
 
+def _audio_file_duration(path: str) -> float:
+    """Return audio file length in seconds; 0.0 if unreadable."""
+    if not path:
+        return 0.0
+    try:
+        import wave
+        with wave.open(path) as f:
+            return f.getnframes() / float(f.getframerate())
+    except Exception:
+        pass
+    try:
+        from mutagen import File as _MFile
+        af = _MFile(path)
+        if af and af.info:
+            return float(af.info.length)
+    except Exception:
+        pass
+    return 0.0
+
+
 class MusicVideoCreator(tk.Tk):
     def __init__(self):
         super().__init__()
@@ -145,6 +165,7 @@ class MusicVideoCreator(tk.Tk):
                     item_id, name=name, duration=dur
                 ),
                 on_add_assets=self._add_assets_to_clip,
+                on_auto_space=self._auto_space_clip,
             )
             self._on_asset_selection_change()
 
@@ -163,6 +184,30 @@ class MusicVideoCreator(tk.Tk):
             return
         for asset in self.asset_panel.get_selected_assets():
             self.project_panel.add_asset_to_clip(self._current_clip_id, asset)
+
+    def _auto_space_clip(self):
+        if not self._current_clip_id:
+            return
+        clip_node = self.project_panel.get_node(self._current_clip_id)
+        clip_dur  = clip_node.get("duration") or 0.0
+        children  = self.project_panel.get_children(self._current_clip_id)
+        if not children or clip_dur <= 0:
+            return
+
+        num_images  = sum(1 for _, n in children if n.get("type") == "image")
+        audio_total = sum(
+            _audio_file_duration(n.get("path"))
+            for _, n in children if n.get("type") == "audio"
+        )
+        image_slot = (clip_dur - audio_total) / num_images if num_images > 0 else 0.0
+
+        current_time = 0.0
+        for iid, n in children:
+            self.project_panel.update_node(iid, start_time=round(current_time, 3))
+            if n.get("type") == "audio":
+                current_time += _audio_file_duration(n.get("path"))
+            else:
+                current_time += image_slot
 
     def _reorder_asset_in_clip(self, direction: int):
         if not self._current_asset_id:

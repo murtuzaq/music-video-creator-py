@@ -159,6 +159,11 @@ class ProjectPanel:
     def get_node(self, item_id: str) -> dict:
         return self._nodes.get(item_id, {})
 
+    def get_children(self, item_id: str) -> list:
+        """Returns list of (child_item_id, node_dict) for direct children."""
+        return [(cid, dict(self._nodes.get(cid, {}), item_id=cid))
+                for cid in self._tree.get_children(item_id)]
+
     def get_child_position(self, item_id: str) -> tuple:
         """Returns (index, total) of item_id among its siblings."""
         parent_id = self._tree.parent(item_id)

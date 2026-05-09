@@ -28,6 +28,7 @@ class InspectorPanel:
         self._on_update              = None
         self._on_add_assets          = None
         self._on_reorder             = None
+        self._on_auto_space          = None
         self._project_total_duration = 0.0
         self._parent_duration        = 0.0
         self._colors                 = dict(_DARK)
@@ -97,7 +98,8 @@ class InspectorPanel:
         elif self._current_type == "audio":
             self.show_audio(self._current_node)
         elif self._current_type == "video_clip":
-            self.show_video_clip(self._current_node, self._on_update, self._on_add_assets)
+            self.show_video_clip(self._current_node, self._on_update,
+                                 self._on_add_assets, self._on_auto_space)
         elif self._current_type == "asset_in_clip":
             self.show_asset_in_clip(self._current_node, self._on_update,
                                     self._parent_duration, self._on_reorder)
@@ -129,13 +131,15 @@ class InspectorPanel:
         view.build(node, total_duration)
         self._current_view = view
 
-    def show_video_clip(self, node: dict, on_update=None, on_add_assets=None):
+    def show_video_clip(self, node: dict, on_update=None,
+                        on_add_assets=None, on_auto_space=None):
         self._current_type  = "video_clip"
         self._current_node  = node
         self._on_update     = on_update
         self._on_add_assets = on_add_assets
+        self._on_auto_space = on_auto_space
         self._clear()
-        view = VideoClipView(self._body, self._colors, on_update, on_add_assets)
+        view = VideoClipView(self._body, self._colors, on_update, on_add_assets, on_auto_space)
         view.build(node)
         self._current_view = view
 
@@ -166,6 +170,7 @@ class InspectorPanel:
         self._on_update              = None
         self._on_add_assets          = None
         self._on_reorder             = None
+        self._on_auto_space          = None
         self._project_total_duration = 0.0
         self._parent_duration        = 0.0
         self._show_empty()
