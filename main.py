@@ -24,6 +24,7 @@ class MusicVideoCreator(tk.Tk):
 
         self.state = AppState()
         self._project_paths                = {}   # root_id -> filepath
+        self._current_clip_id              = None
         self._assets_visible               = tk.BooleanVar(value=True)
         self._project_inspector_visible    = tk.BooleanVar(value=True)
         self._asset_inspector_visible      = tk.BooleanVar(value=True)
@@ -100,7 +101,8 @@ class MusicVideoCreator(tk.Tk):
         self.workspace.add(self.asset_pane, width=210, minsize=100, stretch="never")
         self.asset_panel = AssetPanel(self.asset_pane,
                                       on_select=self._on_asset_selected,
-                                      on_close=self._close_asset_panel)
+                                      on_close=self._close_asset_panel,
+                                      on_selection_change=self._on_asset_selection_change)
 
         self._build_bottom_bar()
 
@@ -113,20 +115,48 @@ class MusicVideoCreator(tk.Tk):
     def _on_project_node_selected(self, node: dict):
         node_type = node.get("type")
         item_id   = node.get("item_id")
-        if node_type == "image":
-            self.inspector_panel.show_image(node)
-        elif node_type == "audio":
-            self.inspector_panel.show_audio(node)
+        if node_type in ("image", "audio"):
+            self._current_clip_id = None
+            parent_id       = node.get("parent_id")
+            parent_node     = self.project_panel.get_node(parent_id)
+            parent_duration = parent_node.get("duration") or 0.0
+            self.inspector_panel.show_asset_in_clip(
+                node,
+                on_update=lambda st, iid=item_id: self.project_panel.update_node(
+                    iid, start_time=st
+                ),
+                parent_duration=parent_duration,
+            )
         elif node_type == "video":
+            self._current_clip_id = None
             total_dur = self.project_panel.get_total_duration(item_id)
             self.inspector_panel.show_project(node, total_dur)
         elif node_type == "video_clip":
+            self._current_clip_id = item_id
             self.inspector_panel.show_video_clip(
                 node,
                 on_update=lambda name, dur: self.project_panel.update_node(
                     item_id, name=name, duration=dur
                 ),
+                on_add_assets=self._add_assets_to_clip,
             )
+            self._on_asset_selection_change()
+
+    def _on_asset_selection_change(self):
+        assets = self.asset_panel.get_selected_assets()
+        self.inspector_panel.set_add_button_state(len(assets) > 0)
+        if len(assets) == 1:
+            self.asset_inspector_panel.show_asset(assets[0])
+        elif len(assets) > 1:
+            self.asset_inspector_panel.show_multi_select(assets)
+        else:
+            self.asset_inspector_panel.clear()
+
+    def _add_assets_to_clip(self):
+        if not self._current_clip_id:
+            return
+        for asset in self.asset_panel.get_selected_assets():
+            self.project_panel.add_asset_to_clip(self._current_clip_id, asset)
 
     def _on_remove_project(self, root_id: str):
         self._project_paths.pop(root_id, None)
@@ -134,7 +164,7 @@ class MusicVideoCreator(tk.Tk):
         self.inspector_panel.clear()
 
     def _on_asset_selected(self, node: dict):
-        self.asset_inspector_panel.show_asset(node)
+        pass  # handled by _on_asset_selection_change
 
     def _add_asset_folder(self):
         self.asset_panel._load_folder()

@@ -125,7 +125,8 @@ class ProjectPanel:
                                     text=f"  {project_name}",
                                     image=self._icons.get("video"),
                                     open=True)
-        self._nodes[item_id] = {"type": "video", "path": None, "name": project_name, "duration": None}
+        self._nodes[item_id] = {"type": "video", "path": None, "name": project_name,
+                                 "duration": None, "start_time": None}
         return item_id
 
     def add_project(self, tree_data: dict) -> str:
@@ -142,7 +143,8 @@ class ProjectPanel:
         self._tree.item(parent_id, open=True)
         return item_id
 
-    def update_node(self, item_id: str, name: str = None, duration: float = None):
+    def update_node(self, item_id: str, name: str = None,
+                    duration: float = None, start_time: float = None):
         node = self._nodes.get(item_id)
         if not node:
             return
@@ -151,6 +153,24 @@ class ProjectPanel:
             self._tree.item(item_id, text=f"  {name}")
         if duration is not None:
             node["duration"] = duration
+        if start_time is not None:
+            node["start_time"] = start_time
+
+    def get_node(self, item_id: str) -> dict:
+        return self._nodes.get(item_id, {})
+
+    def add_asset_to_clip(self, clip_id: str, asset: dict) -> str:
+        ntype  = asset.get("type", "image")
+        path   = asset.get("path")
+        name   = asset.get("name") or (os.path.basename(path) if path else ntype)
+        item_id = self._tree.insert(clip_id, "end",
+                                    text=f"  {name}",
+                                    image=self._icons.get(ntype),
+                                    open=True)
+        self._nodes[item_id] = {"type": ntype, "path": path, "name": name,
+                                 "duration": None, "start_time": 0.0}
+        self._tree.item(clip_id, open=True)
+        return item_id
 
     def remove_project(self, root_id: str):
         self._purge_node(root_id)
@@ -221,11 +241,11 @@ class ProjectPanel:
                                     image=self._icons.get("video_clip"),
                                     open=True)
         self._nodes[item_id] = {"type": "video_clip", "path": None,
-                                 "name": name, "duration": 0.0}
+                                 "name": name, "duration": 0.0, "start_time": None}
         self._tree.item(root_id, open=True)
         self._tree.selection_set(item_id)
         if self._on_select:
-            self._on_select(dict(self._nodes[item_id], item_id=item_id))
+            self._on_select(dict(self._nodes[item_id], item_id=item_id, parent_id=root_id))
 
     def _remove_ctx_project(self):
         root_id = self._ctx_root_id
@@ -255,12 +275,13 @@ class ProjectPanel:
     def _node_to_dict(self, item_id: str) -> dict:
         node = self._nodes.get(item_id, {})
         return {
-            "type":     node.get("type"),
-            "path":     node.get("path"),
-            "name":     node.get("name"),
-            "duration": node.get("duration"),
-            "children": [self._node_to_dict(c)
-                         for c in self._tree.get_children(item_id)],
+            "type":       node.get("type"),
+            "path":       node.get("path"),
+            "name":       node.get("name"),
+            "duration":   node.get("duration"),
+            "start_time": node.get("start_time"),
+            "children":   [self._node_to_dict(c)
+                           for c in self._tree.get_children(item_id)],
         }
 
     def _dict_to_tree(self, parent_id: str, node_data: dict) -> str:
@@ -273,10 +294,11 @@ class ProjectPanel:
                                        image=icon,
                                        open=True)
         self._nodes[item_id] = {
-            "type":     node_type,
-            "path":     path,
-            "name":     node_data.get("name"),
-            "duration": node_data.get("duration"),
+            "type":       node_type,
+            "path":       path,
+            "name":       node_data.get("name"),
+            "duration":   node_data.get("duration"),
+            "start_time": node_data.get("start_time"),
         }
         if node_type == "video_clip":
             m = re.search(r"\d+$", name)
@@ -289,4 +311,5 @@ class ProjectPanel:
     def _on_tree_select(self, _event=None):
         item_id, node = self.get_selected_item()
         if item_id and node and self._on_select:
-            self._on_select(dict(node, item_id=item_id))
+            parent_id = self._tree.parent(item_id)
+            self._on_select(dict(node, item_id=item_id, parent_id=parent_id))

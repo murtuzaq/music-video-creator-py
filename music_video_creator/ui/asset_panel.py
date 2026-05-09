@@ -53,8 +53,9 @@ def _scan_folder(root_path: str) -> dict:
 
 
 class AssetPanel:
-    def __init__(self, parent, on_select=None, on_close=None):
-        self._on_select = on_select
+    def __init__(self, parent, on_select=None, on_close=None, on_selection_change=None):
+        self._on_select           = on_select
+        self._on_selection_change = on_selection_change
         self._nodes     = {}   # item_id -> {"type", "path"}
         self._roots     = {}   # root_path -> item_id (top-level loaded folders)
         self._icons     = {k: _make_icon(c) for k, c in _ICON_COLORS.items()}
@@ -100,7 +101,7 @@ class AssetPanel:
 
         self._tree = ttk.Treeview(
             self._container, style="Asset.Treeview",
-            show="tree", selectmode="browse",
+            show="tree", selectmode="extended",
         )
         sb = ttk.Scrollbar(self._container, orient=tk.VERTICAL,
                            command=self._tree.yview)
@@ -121,6 +122,20 @@ class AssetPanel:
         self._ctx_menu.add_command(label="Remove Folder", command=self._remove_ctx_folder)
 
     # ── Public API ────────────────────────────────────────────────
+
+    def get_selected_assets(self) -> list:
+        result = []
+        seen   = set()
+        for item_id in self._tree.selection():
+            node = self._nodes.get(item_id)
+            if not node:
+                continue
+            if node["type"] == "folder":
+                self._collect_from_folder(item_id, result, seen)
+            elif item_id not in seen:
+                result.append(node)
+                seen.add(item_id)
+        return result
 
     def apply_theme(self, colors):
         bg = colors["bg_dark"]
@@ -173,11 +188,14 @@ class AssetPanel:
 
     def _on_tree_select(self, _event=None):
         sel = self._tree.selection()
-        if not sel:
-            return
-        node = self._nodes.get(sel[0])
-        if node and node["type"] != "folder" and self._on_select:
-            self._on_select(node)
+        for item_id in sel:
+            node = self._nodes.get(item_id)
+            if node and node["type"] != "folder":
+                if self._on_select:
+                    self._on_select(node)
+                break
+        if self._on_selection_change:
+            self._on_selection_change()
 
     def _on_right_click(self, event):
         item = self._tree.identify_row(event.y)
@@ -205,6 +223,17 @@ class AssetPanel:
         self._purge_node(item)
         self._tree.delete(item)
         self._ctx_item = None
+
+    def _collect_from_folder(self, item_id: str, result: list, seen: set):
+        for child_id in self._tree.get_children(item_id):
+            node = self._nodes.get(child_id)
+            if not node:
+                continue
+            if node["type"] == "folder":
+                self._collect_from_folder(child_id, result, seen)
+            elif child_id not in seen:
+                result.append(node)
+                seen.add(child_id)
 
     def _purge_node(self, item_id: str):
         for child in self._tree.get_children(item_id):
