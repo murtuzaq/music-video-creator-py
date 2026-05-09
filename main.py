@@ -47,6 +47,7 @@ class MusicVideoCreator(tk.Tk):
         self._current_clip_id              = None
         self._current_asset_id             = None
         self._auto_space_enabled           = tk.BooleanVar(value=False)
+        self._auto_space_enabled.trace_add("write", self._on_auto_space_changed)
         self._current_asset_clip_id        = None
         self._assets_visible               = tk.BooleanVar(value=True)
         self._project_inspector_visible    = tk.BooleanVar(value=True)
@@ -178,9 +179,7 @@ class MusicVideoCreator(tk.Tk):
             self._current_asset_clip_id  = None
             self.inspector_panel.show_video_clip(
                 node,
-                on_update=lambda name, dur: self.project_panel.update_node(
-                    item_id, name=name, duration=dur
-                ),
+                on_update=lambda name, dur, iid=item_id: self._on_clip_update(iid, name, dur),
                 on_add_assets=self._add_assets_to_clip,
                 auto_space_var=self._auto_space_enabled,
                 get_children=lambda iid=item_id: self._get_clip_preview_children(iid),
@@ -202,6 +201,12 @@ class MusicVideoCreator(tk.Tk):
             return
         for asset in self.asset_panel.get_selected_assets():
             self.project_panel.add_asset_to_clip(self._current_clip_id, asset)
+
+    def _on_clip_update(self, clip_id: str, name: str, dur: float):
+        self.project_panel.update_node(clip_id, name=name, duration=dur)
+        if self._auto_space_enabled.get():
+            self._auto_space_clip()
+            self._refresh_clip_preview()
 
     def _get_clip_preview_children(self, clip_id: str) -> list:
         result = []
@@ -236,6 +241,11 @@ class MusicVideoCreator(tk.Tk):
                 current_time += _audio_file_duration(n.get("path"))
             else:
                 current_time += image_slot
+
+    def _on_auto_space_changed(self, *_):
+        if self._auto_space_enabled.get():
+            self._auto_space_clip()
+            self._refresh_clip_preview()
 
     def _on_asset_manual_adjust(self):
         self._auto_space_enabled.set(False)

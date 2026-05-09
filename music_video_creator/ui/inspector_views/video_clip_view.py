@@ -88,7 +88,7 @@ class VideoClipView:
         ttk.Separator(self._body, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=(10, 8))
 
         tk.Checkbutton(self._body,
-                       text="Auto-space on reorder",
+                       text="Auto-space",
                        variable=self._auto_space_var,
                        bg=bg,
                        fg=self._colors["fg_value"],
