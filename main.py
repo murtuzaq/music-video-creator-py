@@ -46,6 +46,8 @@ class MusicVideoCreator(tk.Tk):
         self._project_paths                = {}   # root_id -> filepath
         self._current_clip_id              = None
         self._current_asset_id             = None
+        self._auto_space_enabled           = tk.BooleanVar(value=False)
+        self._current_asset_clip_id        = None
         self._assets_visible               = tk.BooleanVar(value=True)
         self._project_inspector_visible    = tk.BooleanVar(value=True)
         self._asset_inspector_visible      = tk.BooleanVar(value=True)
@@ -144,8 +146,9 @@ class MusicVideoCreator(tk.Tk):
         node_type = node.get("type")
         item_id   = node.get("item_id")
         if node_type in ("image", "audio"):
-            self._current_clip_id  = None
-            self._current_asset_id = item_id
+            self._current_clip_id        = None
+            self._current_asset_id       = item_id
+            self._current_asset_clip_id  = node.get("parent_id")
             parent_id       = node.get("parent_id")
             parent_node     = self.project_panel.get_node(parent_id)
             parent_duration = parent_node.get("duration") or 0.0
@@ -156,23 +159,30 @@ class MusicVideoCreator(tk.Tk):
                 ),
                 parent_duration=parent_duration,
                 on_reorder=self._reorder_asset_in_clip,
+                on_manual_adjust=self._on_asset_manual_adjust,
             )
             self._update_reorder_buttons()
         elif node_type == "video":
-            self._current_clip_id  = None
-            self._current_asset_id = None
+            self._current_clip_id        = None
+            self._current_asset_id       = None
+            self._current_asset_clip_id  = None
             total_dur = self.project_panel.get_total_duration(item_id)
             self.inspector_panel.show_project(node, total_dur)
         elif node_type == "video_clip":
-            self._current_clip_id  = item_id
-            self._current_asset_id = None
+            same_clip = (item_id == self._current_clip_id or
+                         item_id == self._current_asset_clip_id)
+            if not same_clip:
+                self._auto_space_enabled.set(False)
+            self._current_clip_id        = item_id
+            self._current_asset_id       = None
+            self._current_asset_clip_id  = None
             self.inspector_panel.show_video_clip(
                 node,
                 on_update=lambda name, dur: self.project_panel.update_node(
                     item_id, name=name, duration=dur
                 ),
                 on_add_assets=self._add_assets_to_clip,
-                on_auto_space=self._auto_space_clip,
+                auto_space_var=self._auto_space_enabled,
             )
             self._on_asset_selection_change()
 
@@ -193,11 +203,12 @@ class MusicVideoCreator(tk.Tk):
             self.project_panel.add_asset_to_clip(self._current_clip_id, asset)
 
     def _auto_space_clip(self):
-        if not self._current_clip_id:
+        clip_id = self._current_clip_id or self._current_asset_clip_id
+        if not clip_id:
             return
-        clip_node = self.project_panel.get_node(self._current_clip_id)
+        clip_node = self.project_panel.get_node(clip_id)
         clip_dur  = clip_node.get("duration") or 0.0
-        children  = self.project_panel.get_children(self._current_clip_id)
+        children  = self.project_panel.get_children(clip_id)
         if not children or clip_dur <= 0:
             return
 
@@ -216,11 +227,18 @@ class MusicVideoCreator(tk.Tk):
             else:
                 current_time += image_slot
 
+    def _on_asset_manual_adjust(self):
+        self._auto_space_enabled.set(False)
+
     def _reorder_asset_in_clip(self, direction: int):
         if not self._current_asset_id:
             return
         self.project_panel.move_child(self._current_asset_id, direction)
         self._update_reorder_buttons()
+        if self._auto_space_enabled.get():
+            self._auto_space_clip()
+            node = self.project_panel.get_node(self._current_asset_id)
+            self.inspector_panel.update_asset_start_time(node.get("start_time") or 0.0)
 
     def _update_reorder_buttons(self):
         if not self._current_asset_id:

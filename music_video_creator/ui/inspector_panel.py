@@ -28,7 +28,8 @@ class InspectorPanel:
         self._on_update              = None
         self._on_add_assets          = None
         self._on_reorder             = None
-        self._on_auto_space          = None
+        self._on_manual_adjust       = None
+        self._auto_space_var         = None
         self._project_total_duration = 0.0
         self._parent_duration        = 0.0
         self._colors                 = dict(_DARK)
@@ -99,10 +100,11 @@ class InspectorPanel:
             self.show_audio(self._current_node)
         elif self._current_type == "video_clip":
             self.show_video_clip(self._current_node, self._on_update,
-                                 self._on_add_assets, self._on_auto_space)
+                                 self._on_add_assets, self._auto_space_var)
         elif self._current_type == "asset_in_clip":
             self.show_asset_in_clip(self._current_node, self._on_update,
-                                    self._parent_duration, self._on_reorder)
+                                    self._parent_duration, self._on_reorder,
+                                    self._on_manual_adjust)
         else:
             self._show_empty()
 
@@ -132,28 +134,34 @@ class InspectorPanel:
         self._current_view = view
 
     def show_video_clip(self, node: dict, on_update=None,
-                        on_add_assets=None, on_auto_space=None):
-        self._current_type  = "video_clip"
-        self._current_node  = node
-        self._on_update     = on_update
-        self._on_add_assets = on_add_assets
-        self._on_auto_space = on_auto_space
+                        on_add_assets=None, auto_space_var=None):
+        self._current_type   = "video_clip"
+        self._current_node   = node
+        self._on_update      = on_update
+        self._on_add_assets  = on_add_assets
+        self._auto_space_var = auto_space_var
         self._clear()
-        view = VideoClipView(self._body, self._colors, on_update, on_add_assets, on_auto_space)
+        view = VideoClipView(self._body, self._colors, on_update, on_add_assets, auto_space_var)
         view.build(node)
         self._current_view = view
 
     def show_asset_in_clip(self, node: dict, on_update=None,
-                           parent_duration: float = 0.0, on_reorder=None):
-        self._current_type    = "asset_in_clip"
-        self._current_node    = node
-        self._on_update       = on_update
-        self._on_reorder      = on_reorder
-        self._parent_duration = parent_duration
+                           parent_duration: float = 0.0, on_reorder=None,
+                           on_manual_adjust=None):
+        self._current_type     = "asset_in_clip"
+        self._current_node     = node
+        self._on_update        = on_update
+        self._on_reorder       = on_reorder
+        self._on_manual_adjust = on_manual_adjust
+        self._parent_duration  = parent_duration
         self._clear()
-        view = AssetInClipView(self._body, self._colors, on_update, on_reorder)
+        view = AssetInClipView(self._body, self._colors, on_update, on_reorder, on_manual_adjust)
         view.build(node, parent_duration)
         self._current_view = view
+
+    def update_asset_start_time(self, start_time: float):
+        if self._current_view and hasattr(self._current_view, "update_start_time"):
+            self._current_view.update_start_time(start_time)
 
     def set_reorder_button_state(self, can_go_up: bool, can_go_down: bool):
         if self._current_view and hasattr(self._current_view, "set_reorder_button_state"):
@@ -170,7 +178,8 @@ class InspectorPanel:
         self._on_update              = None
         self._on_add_assets          = None
         self._on_reorder             = None
-        self._on_auto_space          = None
+        self._on_manual_adjust       = None
+        self._auto_space_var         = None
         self._project_total_duration = 0.0
         self._parent_duration        = 0.0
         self._show_empty()

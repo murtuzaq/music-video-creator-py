@@ -5,16 +5,16 @@ from ._helpers import field_label
 
 class VideoClipView:
     def __init__(self, body: tk.Frame, colors: dict,
-                 on_update=None, on_add_assets=None, on_auto_space=None):
-        self._body          = body
-        self._colors        = colors
-        self._on_update     = on_update
-        self._on_add_assets = on_add_assets
-        self._on_auto_space = on_auto_space
-        self._add_btn       = None
-        self._name_var      = tk.StringVar()
-        self._dur_var       = tk.StringVar()
-        self._node          = None
+                 on_update=None, on_add_assets=None, auto_space_var=None):
+        self._body           = body
+        self._colors         = colors
+        self._on_update      = on_update
+        self._on_add_assets  = on_add_assets
+        self._auto_space_var = auto_space_var or tk.BooleanVar(value=False)
+        self._add_btn        = None
+        self._name_var       = tk.StringVar()
+        self._dur_var        = tk.StringVar()
+        self._node           = None
 
     def build(self, node: dict):
         self._node = node
@@ -59,12 +59,16 @@ class VideoClipView:
         # ── Auto Spacing ──────────────────────────────────────────
         ttk.Separator(self._body, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=(10, 8))
 
-        tk.Button(self._body, text="Auto Space Assets",
-                  command=self._do_auto_space,
-                  bg="#4a7a9b", fg="white",
-                  activebackground="#366080", activeforeground="white",
-                  relief=tk.FLAT, bd=0, padx=10, pady=5,
-                  font=("Helvetica", 9, "bold"), cursor="hand2").pack(anchor="w")
+        tk.Checkbutton(self._body,
+                       text="Auto-space on reorder",
+                       variable=self._auto_space_var,
+                       bg=self._colors["bg_darkest"],
+                       fg=self._colors["fg_value"],
+                       selectcolor=self._colors.get("bg_dark", "#252525"),
+                       activebackground=self._colors["bg_darkest"],
+                       activeforeground=self._colors["fg_primary"],
+                       font=("Helvetica", 9),
+                       cursor="hand2").pack(anchor="w")
 
     # ── Public ────────────────────────────────────────────────────
 
