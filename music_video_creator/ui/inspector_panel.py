@@ -48,7 +48,10 @@ class InspectorPanel:
         self._current_node = None
         self._on_update              = None
         self._on_add_assets          = None
+        self._on_reorder             = None
         self._add_btn                = None
+        self._up_btn                 = None
+        self._down_btn               = None
         self._project_total_duration = 0.0
         self._parent_duration        = 0.0
         self._timeline_increment     = 1.0
@@ -129,7 +132,7 @@ class InspectorPanel:
             self.show_video_clip(self._current_node, self._on_update, self._on_add_assets)
         elif self._current_type == "asset_in_clip":
             self.show_asset_in_clip(self._current_node, self._on_update,
-                                    self._parent_duration)
+                                    self._parent_duration, self._on_reorder)
         else:
             self._show_empty()
 
@@ -224,6 +227,16 @@ class InspectorPanel:
                   relief=tk.FLAT, bd=0, padx=10, pady=5,
                   font=("Helvetica", 9, "bold"), cursor="hand2").pack(anchor="w")
 
+    def set_reorder_button_state(self, can_go_up: bool, can_go_down: bool):
+        for btn, enabled in ((self._up_btn, can_go_up), (self._down_btn, can_go_down)):
+            if not btn:
+                continue
+            try:
+                btn.config(state=tk.NORMAL if enabled else tk.DISABLED,
+                           cursor="hand2" if enabled else "")
+            except tk.TclError:
+                pass
+
     def set_add_button_state(self, enabled: bool):
         if not self._add_btn:
             return
@@ -239,16 +252,34 @@ class InspectorPanel:
         except tk.TclError:
             pass
 
-    def show_asset_in_clip(self, node: dict, on_update=None, parent_duration: float = 0.0):
+    def show_asset_in_clip(self, node: dict, on_update=None,
+                           parent_duration: float = 0.0, on_reorder=None):
         self._current_type    = "asset_in_clip"
         self._current_node    = node
         self._on_update       = on_update
+        self._on_reorder      = on_reorder
         self._parent_duration = parent_duration
         self._add_btn         = None
         self._clear()
         bg    = self._colors["bg_darkest"]
         ntype = node.get("type", "image")
         path  = node.get("path") or ""
+
+        # ── order buttons ─────────────────────────────────────────
+        order_row = tk.Frame(self._body, bg=bg)
+        order_row.pack(fill=tk.X, pady=(8, 2))
+        btn_style = dict(relief=tk.FLAT, bd=0, padx=10, pady=3,
+                         font=("Helvetica", 9, "bold"), cursor="hand2",
+                         bg=self._colors.get("bg_dark", "#252525"),
+                         fg=self._colors["fg_value"],
+                         activebackground=self._colors.get("bg_medium", "#2b2b2b"),
+                         activeforeground=self._colors["fg_primary"])
+        self._up_btn   = tk.Button(order_row, text="▲  Up",
+                                   command=lambda: self._do_reorder(-1), **btn_style)
+        self._down_btn = tk.Button(order_row, text="▼  Down",
+                                   command=lambda: self._do_reorder(1), **btn_style)
+        self._up_btn.pack(side=tk.LEFT, padx=(0, 4))
+        self._down_btn.pack(side=tk.LEFT)
 
         # ── preview ───────────────────────────────────────────────
         if ntype == "image" and _PIL and path:
@@ -314,7 +345,10 @@ class InspectorPanel:
         self._current_node           = None
         self._on_update              = None
         self._on_add_assets          = None
+        self._on_reorder             = None
         self._add_btn                = None
+        self._up_btn                 = None
+        self._down_btn               = None
         self._project_total_duration = 0.0
         self._parent_duration        = 0.0
         self._timeline_canvas        = None
@@ -346,6 +380,10 @@ class InspectorPanel:
         self._current_node["duration"] = dur
         if self._on_update:
             self._on_update(name, dur)
+
+    def _do_reorder(self, direction: int):
+        if self._on_reorder:
+            self._on_reorder(direction)
 
     def _do_add_assets(self):
         if self._on_add_assets:

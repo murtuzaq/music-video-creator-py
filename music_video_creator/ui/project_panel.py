@@ -159,6 +159,27 @@ class ProjectPanel:
     def get_node(self, item_id: str) -> dict:
         return self._nodes.get(item_id, {})
 
+    def get_child_position(self, item_id: str) -> tuple:
+        """Returns (index, total) of item_id among its siblings."""
+        parent_id = self._tree.parent(item_id)
+        if not parent_id:
+            return 0, 1
+        siblings = list(self._tree.get_children(parent_id))
+        idx = siblings.index(item_id) if item_id in siblings else 0
+        return idx, len(siblings)
+
+    def move_child(self, item_id: str, direction: int):
+        """Move item_id up (-1) or down (+1) among its siblings."""
+        parent_id = self._tree.parent(item_id)
+        if not parent_id:
+            return
+        siblings = list(self._tree.get_children(parent_id))
+        if item_id not in siblings:
+            return
+        new_idx = siblings.index(item_id) + direction
+        if 0 <= new_idx < len(siblings):
+            self._tree.move(item_id, parent_id, new_idx)
+
     def add_asset_to_clip(self, clip_id: str, asset: dict) -> str:
         ntype  = asset.get("type", "image")
         path   = asset.get("path")
