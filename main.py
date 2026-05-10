@@ -76,6 +76,7 @@ class MusicVideoCreator(tk.Tk):
             "view_toggle_asset_panel":         self._view_toggle_asset_panel,
             "view_reset":                      self._view_reset,
             "set_theme":                       self._set_theme,
+            "tools_audio_asset_creator":       self._open_audio_asset_creator,
         }
         variables = {
             "assets_visible":            self._assets_visible,
@@ -492,6 +493,21 @@ class MusicVideoCreator(tk.Tk):
             self._project_paths[root_id] = filepath
         self._update_title()
         self.bottom_bar.set_status(f"Opened: {os.path.basename(filepath)}")
+
+    # ─────────────────────────────────────────────────────────────
+    # Tools
+    # ─────────────────────────────────────────────────────────────
+    def _open_audio_asset_creator(self):
+        if hasattr(self, "_audio_asset_window") and self._audio_asset_window.winfo_exists():
+            self._audio_asset_window.lift()
+            self._audio_asset_window.focus_set()
+            return
+        import sys
+        _tools_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tools", "audioasset-creator")
+        if _tools_path not in sys.path:
+            sys.path.insert(0, _tools_path)
+        from app_gui import App
+        self._audio_asset_window = App(self)
 
 
 if __name__ == "__main__":

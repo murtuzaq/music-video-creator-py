@@ -61,5 +61,15 @@ class MenuBar(tk.Menu):
                                     command=lambda: callbacks["set_theme"]("light"))
         self.add_cascade(label="Window", menu=window_menu)
 
+        # ── Tools menu ────────────────────────────────────────────
+        tools_menu = tk.Menu(self, tearoff=0)
+        asset_menu = tk.Menu(tools_menu, tearoff=0)
+        asset_menu.add_command(
+            label="Audio Asset Creator",
+            command=callbacks.get("tools_audio_asset_creator"),
+        )
+        tools_menu.add_cascade(label="Asset", menu=asset_menu)
+        self.add_cascade(label="Tools", menu=tools_menu)
+
         root.config(menu=self)
 
