@@ -1,6 +1,12 @@
+import sys
+import os
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
-import os
+
+_ROOT = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(_ROOT, "utility", "git_version_py"))
+import git_version
+_VERSION = git_version.get(_ROOT)
 
 from music_video_creator.app_state import AppState
 from music_video_creator.project import new_project, save_project, load_project, VPROJ_EXTENSION
@@ -38,7 +44,7 @@ def _audio_file_duration(path: str) -> float:
 class MusicVideoCreator(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("Music Video Creator")
+        self.title(f"Music Video Creator {_VERSION}")
         self.geometry("1200x700")
         self.resizable(True, True)
 
@@ -419,12 +425,12 @@ class MusicVideoCreator(tk.Tk):
     def _update_title(self):
         count = len(self._project_paths)
         if count == 0:
-            self.title("Music Video Creator")
+            self.title(f"Music Video Creator {_VERSION}")
         elif count == 1:
             path = next(iter(self._project_paths.values()))
-            self.title(f"Music Video Creator — {os.path.basename(path)}")
+            self.title(f"Music Video Creator {_VERSION} — {os.path.basename(path)}")
         else:
-            self.title(f"Music Video Creator ({count} projects)")
+            self.title(f"Music Video Creator {_VERSION} ({count} projects)")
 
     def _new_project(self):
         path = filedialog.asksaveasfilename(
