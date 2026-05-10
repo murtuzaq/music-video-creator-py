@@ -208,6 +208,8 @@ class MusicVideoCreator(tk.Tk):
             return
         for asset in self.asset_panel.get_selected_assets():
             self.project_panel.add_asset_to_clip(self._current_clip_id, asset)
+        if self._auto_space_enabled.get():
+            self._auto_space_clip()
 
     def _on_clip_update(self, clip_id: str, name: str, dur: float):
         self.project_panel.update_node(clip_id, name=name, duration=dur)

@@ -231,7 +231,8 @@ class VideoClipView:
                 t1 = t0 + (n.get("_audio_dur") or 0.0)
             else:
                 t1 = assets[i + 1].get("start_time") if i + 1 < len(assets) else dur
-                t1 = t1 or dur
+                if t1 is None:
+                    t1 = dur
 
             x0    = 2 + t0 * px_per_s
             x1    = max(x0 + 3, 2 + t1 * px_per_s)
