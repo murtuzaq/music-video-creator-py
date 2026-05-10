@@ -1,47 +1,114 @@
-class VideoGenerator:
-    def __init__(self, status_callback=None):
-        self.status_callback = status_callback
+import os
 
-    def generate(self, jobs, audio_path, out_path):
-        from moviepy import ImageClip, AudioFileClip, concatenate_videoclips
+import numpy as np
+from PIL import Image
 
-        audio = AudioFileClip(audio_path)
-        audio_duration = audio.duration
 
-        load_times = [0.0] + [load_time for _, load_time in jobs[1:]]
-        if load_times[-1] >= audio_duration:
-            raise ValueError("Last image load time is after audio end.")
+def generate(project_data: dict, output_path: str,
+             resolution: tuple = (1920, 1080), fps: int = 24,
+             progress_callback=None) -> str:
+    from moviepy import (ColorClip, ImageClip, AudioFileClip,
+                         CompositeVideoClip, CompositeAudioClip,
+                         concatenate_videoclips)
 
-        durations = self._get_durations(load_times, audio_duration)
-        clips = self._get_image_clips(jobs, durations)
+    _report = progress_callback or (lambda p, m: None)
 
-        video = concatenate_videoclips(clips, method="compose")
-        if audio.duration > video.duration:
-            audio = audio.subclipped(0, video.duration)
-        video = video.with_audio(audio)
+    valid_clips = [
+        c for c in project_data.get("children", [])
+        if c.get("type") == "video_clip" and (c.get("duration") or 0) > 0
+    ]
+    if not valid_clips:
+        raise ValueError("No video clips with duration > 0")
 
-        self._set_status("Rendering video...")
-        video.write_videofile(out_path, codec="libx264", audio_codec="aac", fps=24, logger=None)
+    built = []
+    n = len(valid_clips)
+    for i, clip_data in enumerate(valid_clips):
+        _report(i / n * 0.85, f"Building clip {i + 1} of {n}…")
+        built.append(_build_clip(clip_data, resolution, fps))
 
-    def _get_durations(self, load_times, audio_duration):
-        durations = []
-        for index in range(len(load_times)):
-            if index < len(load_times) - 1:
-                durations.append(load_times[index + 1] - load_times[index])
-            else:
-                durations.append(audio_duration - load_times[index])
-        return durations
+    _report(0.87, "Concatenating clips…")
+    final = concatenate_videoclips(built, method="compose")
 
-    def _get_image_clips(self, jobs, durations):
-        from moviepy import ImageClip
+    _report(0.90, "Encoding — this may take a while…")
+    final.write_videofile(
+        output_path, fps=fps,
+        codec="libx264", audio_codec="aac",
+        logger=None,
+    )
 
-        clips = []
-        for index, ((img_path, _), duration) in enumerate(zip(jobs, durations), 1):
-            self._set_status(f"Processing image {index}/{len(jobs)}...")
-            clip = ImageClip(img_path, duration=duration).with_fps(24)
-            clips.append(clip)
-        return clips
+    _report(1.0, "Done")
+    return output_path
 
-    def _set_status(self, message):
-        if self.status_callback is not None:
-            self.status_callback(message)
+
+def _fit_frame(path: str, resolution: tuple) -> np.ndarray:
+    img = Image.open(path).convert("RGB")
+    w, h = resolution
+    iw, ih = img.size
+    scale = min(w / iw, h / ih)
+    nw, nh = int(iw * scale), int(ih * scale)
+    img = img.resize((nw, nh), Image.LANCZOS)
+    canvas = Image.new("RGB", resolution, (0, 0, 0))
+    canvas.paste(img, ((w - nw) // 2, (h - nh) // 2))
+    return np.array(canvas)
+
+
+def _build_clip(clip_data: dict, resolution: tuple, fps: int):
+    from moviepy import (ColorClip, ImageClip, AudioFileClip,
+                         CompositeVideoClip, CompositeAudioClip)
+
+    duration = float(clip_data.get("duration") or 0)
+    children = clip_data.get("children", [])
+
+    images = sorted(
+        [c for c in children if c.get("type") == "image"],
+        key=lambda c: c.get("start_time") or 0.0,
+    )
+    audios = sorted(
+        [c for c in children if c.get("type") == "audio"],
+        key=lambda c: c.get("start_time") or 0.0,
+    )
+
+    base = ColorClip(size=resolution, color=(0, 0, 0), duration=duration).with_fps(fps)
+    layers = [base]
+
+    for j, img_data in enumerate(images):
+        path = img_data.get("path")
+        if not path or not os.path.exists(path):
+            continue
+        t_start = float(img_data.get("start_time") or 0.0)
+        if j + 1 < len(images):
+            t_end = float(images[j + 1].get("start_time") or duration)
+        else:
+            t_end = duration
+        if t_end <= t_start:
+            continue
+        try:
+            frame = _fit_frame(path, resolution)
+            clip = (ImageClip(frame, duration=t_end - t_start)
+                    .with_fps(fps)
+                    .with_start(t_start))
+            layers.append(clip)
+        except Exception:
+            pass
+
+    audio_clips = []
+    for audio_data in audios:
+        path = audio_data.get("path")
+        if not path or not os.path.exists(path):
+            continue
+        t_start = float(audio_data.get("start_time") or 0.0)
+        if t_start >= duration:
+            continue
+        try:
+            ac = AudioFileClip(path)
+            ac = ac.subclipped(0, min(ac.duration, duration - t_start))
+            ac = ac.with_start(t_start)
+            audio_clips.append(ac)
+        except Exception:
+            pass
+
+    video = CompositeVideoClip(layers, size=resolution)
+    if audio_clips:
+        video = video.with_audio(CompositeAudioClip(audio_clips))
+
+    return video

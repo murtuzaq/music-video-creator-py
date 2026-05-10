@@ -29,6 +29,8 @@ class InspectorPanel:
         self._on_add_assets          = None
         self._on_reorder             = None
         self._on_manual_adjust       = None
+        self._on_generate            = None
+        self._has_valid_clips        = False
         self._auto_space_var         = None
         self._get_children           = None
         self._project_total_duration = 0.0
@@ -96,7 +98,8 @@ class InspectorPanel:
         if self._current_type == "image":
             self.show_image(self._current_node)
         elif self._current_type == "video":
-            self.show_project(self._current_node, self._project_total_duration)
+            self.show_project(self._current_node, self._project_total_duration,
+                              self._on_generate, self._has_valid_clips)
         elif self._current_type == "audio":
             self.show_audio(self._current_node)
         elif self._current_type == "video_clip":
@@ -126,14 +129,22 @@ class InspectorPanel:
         view.build(asset)
         self._current_view = view
 
-    def show_project(self, node: dict, total_duration: float = 0.0):
+    def show_project(self, node: dict, total_duration: float = 0.0,
+                     on_generate=None, has_valid_clips: bool = False):
         self._current_type           = "video"
         self._current_node           = node
         self._project_total_duration = total_duration
+        self._on_generate            = on_generate
+        self._has_valid_clips        = has_valid_clips
         self._clear()
         view = ProjectView(self._body, self._colors)
-        view.build(node, total_duration)
+        view.build(node, total_duration,
+                   on_generate=on_generate, has_valid_clips=has_valid_clips)
         self._current_view = view
+
+    def update_generate_progress(self, fraction: float, message: str):
+        if self._current_view and hasattr(self._current_view, "set_progress"):
+            self._current_view.set_progress(fraction, message)
 
     def show_video_clip(self, node: dict, on_update=None,
                         on_add_assets=None, auto_space_var=None,
@@ -188,6 +199,8 @@ class InspectorPanel:
         self._on_add_assets          = None
         self._on_reorder             = None
         self._on_manual_adjust       = None
+        self._on_generate            = None
+        self._has_valid_clips        = False
         self._auto_space_var         = None
         self._get_children           = None
         self._project_total_duration = 0.0

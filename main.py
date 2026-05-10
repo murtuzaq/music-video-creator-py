@@ -175,7 +175,11 @@ class MusicVideoCreator(tk.Tk):
             self._current_asset_id       = None
             self._current_asset_clip_id  = None
             total_dur = self.project_panel.get_total_duration(item_id)
-            self.inspector_panel.show_project(node, total_dur)
+            self.inspector_panel.show_project(
+                node, total_dur,
+                on_generate=lambda iid=item_id: self._start_generate(iid),
+                has_valid_clips=self._has_valid_clips(item_id),
+            )
         elif node_type == "video_clip":
             same_clip = (item_id == self._current_clip_id or
                          item_id == self._current_asset_clip_id)
@@ -501,6 +505,52 @@ class MusicVideoCreator(tk.Tk):
             self._project_paths[root_id] = filepath
         self._update_title()
         self.bottom_bar.set_status(f"Opened: {os.path.basename(filepath)}")
+
+    # ─────────────────────────────────────────────────────────────
+    # Video generation
+    # ─────────────────────────────────────────────────────────────
+    def _has_valid_clips(self, root_id: str) -> bool:
+        for _, n in self.project_panel.get_children(root_id):
+            if n.get("type") == "video_clip" and (n.get("duration") or 0) > 0:
+                return True
+        return False
+
+    def _start_generate(self, root_id: str):
+        if not self._has_valid_clips(root_id):
+            return
+        out_path = filedialog.asksaveasfilename(
+            title="Save Video As",
+            defaultextension=".mp4",
+            filetypes=[("MP4 video", "*.mp4"), ("All files", "*.*")],
+        )
+        if not out_path:
+            return
+
+        project_data = self.project_panel.get_project_data(root_id)
+        self.inspector_panel.update_generate_progress(0.0, "Starting…")
+
+        def _progress(fraction, message):
+            self.inspector_panel.update_generate_progress(fraction, message)
+            if fraction >= 1.0:
+                self.bottom_bar.set_status(f"Video saved: {os.path.basename(out_path)}")
+            elif fraction < 0:
+                self.bottom_bar.set_status(f"Generation failed: {message}")
+
+        import threading
+        from music_video_creator.services.video_generator import generate
+
+        def _run():
+            try:
+                generate(
+                    project_data, out_path,
+                    progress_callback=lambda p, m: self.after(
+                        0, lambda p=p, m=m: _progress(p, m)
+                    ),
+                )
+            except Exception as exc:
+                self.after(0, lambda e=exc: _progress(-1, str(e)))
+
+        threading.Thread(target=_run, daemon=True).start()
 
     # ─────────────────────────────────────────────────────────────
     # Tools
