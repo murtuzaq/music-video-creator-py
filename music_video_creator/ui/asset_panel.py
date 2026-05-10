@@ -10,11 +10,13 @@ except ImportError:
 
 _IMAGE_EXT = {".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp", ".tiff", ".tif"}
 _AUDIO_EXT = {".mp3", ".wav", ".aac", ".ogg", ".flac", ".m4a", ".wma"}
+_INFO_EXT  = {".info"}
 
 _ICON_COLORS = {
-    "folder": "#888888",
-    "image":  "#5cb85c",
-    "audio":  "#4a90d9",
+    "folder":     "#888888",
+    "image":      "#5cb85c",
+    "audio":      "#4a90d9",
+    "audio_clip": "#8e44ad",
 }
 
 
@@ -47,6 +49,9 @@ def _scan_folder(root_path: str) -> dict:
                 elif ext in _AUDIO_EXT:
                     children.append({"name": entry.name, "path": entry.path,
                                      "type": "audio", "children": []})
+                elif ext in _INFO_EXT:
+                    children.append({"name": entry.name, "path": entry.path,
+                                     "type": "audio_clip", "children": []})
     except PermissionError:
         pass
     return {"name": name, "path": root_path, "type": "folder", "children": children}

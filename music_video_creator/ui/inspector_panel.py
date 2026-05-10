@@ -6,6 +6,7 @@ from .inspector_views.image_view         import ImageView
 from .inspector_views.audio_view         import AudioView
 from .inspector_views.video_clip_view    import VideoClipView
 from .inspector_views.asset_in_clip_view import AssetInClipView
+from .inspector_views.audio_clip_view    import AudioClipView
 
 _DARK = {
     "bg_darkest":   "#1e1e1e",
@@ -27,6 +28,7 @@ class InspectorPanel:
         self._current_view           = None
         self._on_update              = None
         self._on_add_assets          = None
+        self._on_add_images          = None
         self._on_reorder             = None
         self._on_manual_adjust       = None
         self._on_generate            = None
@@ -115,6 +117,11 @@ class InspectorPanel:
             self.show_asset_in_clip(self._current_node, self._on_update,
                                     self._parent_duration, self._on_reorder,
                                     self._on_manual_adjust)
+        elif self._current_type == "audio_clip":
+            self.show_audio_clip(self._current_node, self._on_update,
+                                 self._on_add_images, self._parent_duration,
+                                 self._on_reorder, self._on_manual_adjust,
+                                 self._get_children)
         else:
             self._show_empty()
 
@@ -188,6 +195,23 @@ class InspectorPanel:
         view.build(node, parent_duration)
         self._current_view = view
 
+    def show_audio_clip(self, node: dict, on_update=None, on_add_images=None,
+                        parent_duration: float = 0.0, on_reorder=None,
+                        on_manual_adjust=None, get_children=None):
+        self._current_type     = "audio_clip"
+        self._current_node     = node
+        self._on_update        = on_update
+        self._on_add_images    = on_add_images
+        self._on_reorder       = on_reorder
+        self._on_manual_adjust = on_manual_adjust
+        self._parent_duration  = parent_duration
+        self._get_children     = get_children
+        self._clear()
+        view = AudioClipView(self._body, self._colors, on_update, on_add_images,
+                             on_reorder, on_manual_adjust, get_children)
+        view.build(node, parent_duration)
+        self._current_view = view
+
     def refresh_clip_timeline(self):
         if self._current_view and hasattr(self._current_view, "refresh_timeline"):
             self._current_view.refresh_timeline()
@@ -210,6 +234,7 @@ class InspectorPanel:
         self._current_view           = None
         self._on_update              = None
         self._on_add_assets          = None
+        self._on_add_images          = None
         self._on_reorder             = None
         self._on_manual_adjust       = None
         self._on_generate            = None

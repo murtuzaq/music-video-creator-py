@@ -188,6 +188,26 @@ class MusicVideoCreator(tk.Tk):
                 generate_fraction=gen["fraction"] if is_gen else 0.0,
                 generate_message=gen["message"] if is_gen else "",
             )
+        elif node_type == "audio_clip":
+            self._current_clip_id        = None
+            self._current_asset_id       = item_id
+            self._current_asset_clip_id  = node.get("parent_id")
+            parent_id       = node.get("parent_id")
+            parent_node     = self.project_panel.get_node(parent_id)
+            parent_duration = parent_node.get("duration") or 0.0
+            self.inspector_panel.show_audio_clip(
+                node,
+                on_update=lambda st, iid=item_id: self.project_panel.update_node(
+                    iid, start_time=st
+                ),
+                on_add_images=self._add_images_to_audio_clip,
+                parent_duration=parent_duration,
+                on_reorder=self._reorder_asset_in_clip,
+                on_manual_adjust=self._on_asset_manual_adjust,
+                get_children=lambda iid=item_id: self.project_panel.get_children(iid),
+            )
+            self._update_reorder_buttons()
+            self._on_asset_selection_change()
         elif node_type == "video_clip":
             same_clip = (item_id == self._current_clip_id or
                          item_id == self._current_asset_clip_id)
@@ -223,6 +243,13 @@ class MusicVideoCreator(tk.Tk):
         if self._auto_space_enabled.get():
             self._auto_space_clip()
 
+    def _add_images_to_audio_clip(self):
+        if not self._current_asset_id:
+            return
+        for asset in self.asset_panel.get_selected_assets():
+            if asset.get("type") == "image":
+                self.project_panel.add_asset_to_clip(self._current_asset_id, asset)
+
     def _on_clip_update(self, clip_id: str, name: str, dur: float):
         self.project_panel.update_node(clip_id, name=name, duration=dur)
         if self._auto_space_enabled.get():
@@ -233,8 +260,18 @@ class MusicVideoCreator(tk.Tk):
         result = []
         for _, n in self.project_panel.get_children(clip_id):
             node = dict(n)
-            if node.get("type") == "audio":
+            ntype = node.get("type")
+            if ntype == "audio":
                 node["_audio_dur"] = _audio_file_duration(node.get("path"))
+            elif ntype == "audio_clip":
+                ac_start = float(node.get("start_time") or 0.0)
+                ac_images = []
+                for _, child_n in self.project_panel.get_children(n["item_id"]):
+                    if child_n.get("type") == "image":
+                        img = dict(child_n)
+                        img["_abs_start"] = ac_start + float(child_n.get("start_time") or 0.0)
+                        ac_images.append(img)
+                node["_ac_images"] = ac_images
             result.append(node)
         return result
 
@@ -253,6 +290,10 @@ class MusicVideoCreator(tk.Tk):
             _audio_file_duration(n.get("path"))
             for _, n in children if n.get("type") == "audio"
         )
+        audio_total += sum(
+            float(n.get("duration") or 0.0)
+            for _, n in children if n.get("type") == "audio_clip"
+        )
         image_slot = (clip_dur - audio_total) / num_images if num_images > 0 else 0.0
 
         current_time = 0.0
@@ -260,6 +301,8 @@ class MusicVideoCreator(tk.Tk):
             self.project_panel.update_node(iid, start_time=round(current_time, 3))
             if n.get("type") == "audio":
                 current_time += _audio_file_duration(n.get("path"))
+            elif n.get("type") == "audio_clip":
+                current_time += float(n.get("duration") or 0.0)
             else:
                 current_time += image_slot
 

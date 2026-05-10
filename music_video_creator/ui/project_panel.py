@@ -1,3 +1,4 @@
+import json
 import os
 import re
 import tkinter as tk
@@ -13,7 +14,17 @@ _ICON_SPEC = {
     "audio":      "#4a90d9",
     "image":      "#5cb85c",
     "video_clip": "#9b59b6",
+    "audio_clip": "#8e44ad",
 }
+
+
+def _read_info_duration(path: str) -> float:
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            info = json.load(f)
+        return float(info.get("duration_seconds", 0.0))
+    except Exception:
+        return 0.0
 
 
 def _make_icon(color: str):
@@ -189,12 +200,13 @@ class ProjectPanel:
         ntype  = asset.get("type", "image")
         path   = asset.get("path")
         name   = asset.get("name") or (os.path.basename(path) if path else ntype)
+        duration = _read_info_duration(path) if ntype == "audio_clip" else None
         item_id = self._tree.insert(clip_id, "end",
                                     text=f"  {name}",
                                     image=self._icons.get(ntype),
                                     open=True)
         self._nodes[item_id] = {"type": ntype, "path": path, "name": name,
-                                 "duration": None, "start_time": 0.0}
+                                 "duration": duration, "start_time": 0.0}
         self._tree.item(clip_id, open=True)
         return item_id
 

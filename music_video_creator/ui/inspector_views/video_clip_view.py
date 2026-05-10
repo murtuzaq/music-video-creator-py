@@ -222,33 +222,67 @@ class VideoClipView:
         assets   = sorted(children, key=lambda n: n.get("start_time") or 0.0)
         px_per_s = (w - 4) / dur
 
-        # ── asset bars ─────────────────────────────────────────────
-        for i, n in enumerate(assets):
-            t0    = n.get("start_time") or 0.0
-            ntype = n.get("type", "image")
+        audio_clips  = [n for n in assets if n.get("type") == "audio_clip"]
+        direct_audio = [n for n in assets if n.get("type") == "audio"]
+        direct_imgs  = [n for n in assets if n.get("type") == "image"]
 
-            if ntype == "audio":
-                t1 = t0 + (n.get("_audio_dur") or 0.0)
-            else:
-                t1 = assets[i + 1].get("start_time") if i + 1 < len(assets) else dur
-                if t1 is None:
-                    t1 = dur
-
-            x0    = 2 + t0 * px_per_s
-            x1    = max(x0 + 3, 2 + t1 * px_per_s)
-            color = "#4a90d9" if ntype == "audio" else "#5cb85c"
-
-            c.create_rectangle(x0, _LANE_TOP, x1, _LANE_BOT, fill=color, outline="")
-
+        def _bar_label(canvas, x0, x1, y_mid, text, color="white"):
             bar_w = x1 - x0
             if bar_w > 16:
-                label     = n.get("name") or ntype
-                max_chars = max(1, int(bar_w / 6))
-                if len(label) > max_chars:
-                    label = label[:max_chars - 1] + "…"
-                c.create_text((x0 + x1) / 2, (_LANE_TOP + _LANE_BOT) / 2,
-                              text=label, fill="white",
-                              font=("Helvetica", 7), anchor="center")
+                max_c = max(1, int(bar_w / 6))
+                label = text[:max_c - 1] + "…" if len(text) > max_c else text
+                canvas.create_text((x0 + x1) / 2, y_mid, text=label,
+                                   fill=color, font=("Helvetica", 7), anchor="center")
+
+        # ── Pass 1: audio_clip blocks (purple) ────────────────────
+        _INNER_TOP = _LANE_TOP + 14
+        _INNER_BOT = _LANE_BOT - 2
+        for n in audio_clips:
+            t0 = float(n.get("start_time") or 0.0)
+            t1 = min(t0 + float(n.get("duration") or 0.0), dur)
+            x0 = 2 + t0 * px_per_s
+            x1 = max(x0 + 3, 2 + t1 * px_per_s)
+            c.create_rectangle(x0, _LANE_TOP, x1, _LANE_BOT, fill="#8e44ad", outline="")
+            name = n.get("name") or "audio clip"
+            bar_w = x1 - x0
+            if bar_w > 16:
+                max_c = max(1, int(bar_w / 6))
+                lbl = name[:max_c - 1] + "…" if len(name) > max_c else name
+                c.create_text((x0 + x1) / 2, _LANE_TOP + 7,
+                              text=lbl, fill="white", font=("Helvetica", 7), anchor="center")
+            # sub-images inside the audio_clip block
+            ac_images = sorted(n.get("_ac_images", []),
+                               key=lambda img: img.get("start_time") or 0.0)
+            ac_dur = float(n.get("duration") or 0.0)
+            for j, img in enumerate(ac_images):
+                rel_t0 = float(img.get("start_time") or 0.0)
+                rel_t1 = float(ac_images[j + 1].get("start_time") or 0.0) if j + 1 < len(ac_images) else ac_dur
+                ix0 = 2 + (t0 + rel_t0) * px_per_s
+                ix1 = max(ix0 + 2, 2 + (t0 + rel_t1) * px_per_s)
+                c.create_rectangle(ix0, _INNER_TOP, ix1, _INNER_BOT, fill="#5cb85c", outline="")
+                _bar_label(c, ix0, ix1, (_INNER_TOP + _INNER_BOT) / 2,
+                           img.get("name") or "img")
+
+        # ── Pass 2: direct audio bars (blue) ──────────────────────
+        for n in direct_audio:
+            t0 = float(n.get("start_time") or 0.0)
+            t1 = t0 + float(n.get("_audio_dur") or 0.0)
+            x0 = 2 + t0 * px_per_s
+            x1 = max(x0 + 3, 2 + t1 * px_per_s)
+            c.create_rectangle(x0, _LANE_TOP, x1, _LANE_BOT, fill="#4a90d9", outline="")
+            _bar_label(c, x0, x1, (_LANE_TOP + _LANE_BOT) / 2, n.get("name") or "audio")
+
+        # ── Pass 3: direct image bars (green) ─────────────────────
+        direct_imgs_s = sorted(direct_imgs, key=lambda n: n.get("start_time") or 0.0)
+        for i, n in enumerate(direct_imgs_s):
+            t0 = float(n.get("start_time") or 0.0)
+            t1 = float(direct_imgs_s[i + 1].get("start_time") or 0.0) if i + 1 < len(direct_imgs_s) else dur
+            if t1 is None:
+                t1 = dur
+            x0 = 2 + t0 * px_per_s
+            x1 = max(x0 + 3, 2 + t1 * px_per_s)
+            c.create_rectangle(x0, _LANE_TOP, x1, _LANE_BOT, fill="#5cb85c", outline="")
+            _bar_label(c, x0, x1, (_LANE_TOP + _LANE_BOT) / 2, n.get("name") or "img")
 
         # ── time ticks ─────────────────────────────────────────────
         inc = _nice_tick(dur)
@@ -277,15 +311,26 @@ class VideoClipView:
             return
 
         children = self._get_children() if self._get_children else []
-        images   = sorted(
-            [n for n in children if n.get("type") == "image"],
-            key=lambda n: n.get("start_time") or 0.0,
-        )
+
+        # Flatten images: direct + audio_clip sub-images with absolute start times
+        all_images = []
+        for n in children:
+            if n.get("type") == "image":
+                all_images.append({"path": n.get("path"),
+                                   "start_time": float(n.get("start_time") or 0.0)})
+            elif n.get("type") == "audio_clip":
+                ac_start = float(n.get("start_time") or 0.0)
+                for img in n.get("_ac_images", []):
+                    all_images.append({
+                        "path": img.get("path"),
+                        "start_time": img.get("_abs_start", ac_start + float(img.get("start_time") or 0.0)),
+                    })
+        all_images.sort(key=lambda n: n["start_time"])
 
         active_path = None
-        for n in reversed(images):
-            if (n.get("start_time") or 0.0) <= self._playhead_t + 1e-9:
-                active_path = n.get("path")
+        for n in reversed(all_images):
+            if n["start_time"] <= self._playhead_t + 1e-9:
+                active_path = n["path"]
                 break
 
         if not active_path:
