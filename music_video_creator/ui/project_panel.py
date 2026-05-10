@@ -47,14 +47,17 @@ def _make_camera_icon():
 
 
 class ProjectPanel:
-    def __init__(self, parent, on_select=None, on_close=None, on_remove_project=None):
+    def __init__(self, parent, on_select=None, on_close=None, on_remove_project=None,
+                 on_remove_child=None):
         self._on_select         = on_select
         self._on_remove_project = on_remove_project
+        self._on_remove_child   = on_remove_child
         self._icons             = {t: _make_icon(c) for t, c in _ICON_SPEC.items()}
         self._icons["video"]    = _make_camera_icon()
         self._nodes             = {}    # item_id -> {"type","path","name","duration"}
         self._video_clip_count  = 0
         self._ctx_root_id       = None  # project root under the active right-click
+        self._ctx_child_id      = None  # child node under the active right-click
 
         self.frame = tk.Frame(parent, bg="#252525")
         self.frame.pack(fill=tk.BOTH, expand=True)
@@ -103,11 +106,14 @@ class ProjectPanel:
         sb.pack(side=tk.RIGHT, fill=tk.Y)
         self._tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
-        # ── right-click context menu ───────────────────────────────
+        # ── right-click context menus ─────────────────────────────
         self._ctx_menu = tk.Menu(self._tree, tearoff=0)
         self._ctx_menu.add_command(label="Add Video Clip", command=self._new_video_clip)
         self._ctx_menu.add_separator()
-        self._ctx_menu.add_command(label="Remove Project",  command=self._remove_ctx_project)
+        self._ctx_menu.add_command(label="Remove Project", command=self._remove_ctx_project)
+
+        self._child_ctx_menu = tk.Menu(self._tree, tearoff=0)
+        self._child_ctx_menu.add_command(label="Remove", command=self._remove_ctx_child)
 
     # ── Theme ─────────────────────────────────────────────────────
 
@@ -304,11 +310,27 @@ class ProjectPanel:
         item = self._tree.identify_row(event.y)
         if not item:
             return
-        node = self._nodes.get(item, {})
-        if node.get("type") == "video":
+        node  = self._nodes.get(item, {})
+        ntype = node.get("type")
+        if ntype == "video":
             self._ctx_root_id = item
             self._tree.selection_set(item)
             self._ctx_menu.post(event.x_root, event.y_root)
+        elif ntype in ("video_clip", "image", "audio", "audio_clip"):
+            self._ctx_child_id = item
+            self._tree.selection_set(item)
+            self._child_ctx_menu.post(event.x_root, event.y_root)
+
+    def _remove_ctx_child(self):
+        item = self._ctx_child_id
+        if not item:
+            return
+        parent_id = self._tree.parent(item)
+        self._purge_node(item)
+        self._tree.delete(item)
+        self._ctx_child_id = None
+        if self._on_remove_child:
+            self._on_remove_child(item, parent_id)
 
     def _purge_node(self, item_id: str):
         for child in self._tree.get_children(item_id):

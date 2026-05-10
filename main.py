@@ -108,7 +108,8 @@ class MusicVideoCreator(tk.Tk):
         self.project_panel = ProjectPanel(self.project_pane,
                                           on_select=self._on_project_node_selected,
                                           on_close=self._close_project_panel,
-                                          on_remove_project=self._on_remove_project)
+                                          on_remove_project=self._on_remove_project,
+                                          on_remove_child=self._on_child_removed)
 
         # ── Inspector (center, stretches) ─────────────────────────
         self.inspector_column = tk.PanedWindow(self.workspace, orient=tk.VERTICAL,
@@ -364,6 +365,17 @@ class MusicVideoCreator(tk.Tk):
             return
         idx, total = self.project_panel.get_child_position(self._current_asset_id)
         self.inspector_panel.set_reorder_button_state(idx > 0, idx < total - 1)
+
+    def _on_child_removed(self, item_id: str, parent_id: str):
+        if item_id in (self._current_asset_id, self._current_clip_id):
+            # The removed item is the one currently shown in the inspector
+            self._current_asset_id      = None
+            self._current_asset_clip_id = None
+            self._current_clip_id       = None
+            self.inspector_panel.clear()
+        elif parent_id == self._current_clip_id:
+            # A child of the current clip was removed — refresh strip + AC section
+            self.inspector_panel.refresh_clip_timeline()
 
     def _on_remove_project(self, root_id: str):
         self._project_paths.pop(root_id, None)
