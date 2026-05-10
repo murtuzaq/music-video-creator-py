@@ -5,11 +5,13 @@ from tkinter import ttk
 
 from ._helpers import field_label, fmt_duration
 
-_TICK_STEPS = (0.05, 0.1, 0.2, 0.25, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300)
-_LANE_TOP = 8
-_LANE_BOT = 32
-_LABEL_Y  = 42
-_STRIP_H  = 52
+_TICK_STEPS   = (0.05, 0.1, 0.2, 0.25, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300)
+_LANE_TOP     = 8
+_LANE_BOT     = 32
+_LABEL_Y      = 42
+_CUE_Y        = 56
+_STRIP_H      = 52
+_STRIP_H_LYRC = 72
 
 
 def _nice_tick(total: float, target: int = 6) -> float:
@@ -18,6 +20,15 @@ def _nice_tick(total: float, target: int = 6) -> float:
         if step >= t:
             return step
     return _TICK_STEPS[-1]
+
+
+def _cue_min_gap(cues: list) -> float:
+    if len(cues) < 2:
+        return 0.0
+    gaps = [cues[i + 1]["start"] - cues[i]["start"]
+            for i in range(len(cues) - 1)
+            if cues[i + 1]["start"] > cues[i]["start"]]
+    return min(gaps) if gaps else 0.0
 
 
 class AudioClipView:
@@ -34,6 +45,8 @@ class AudioClipView:
         self._get_children     = get_children
         self._node             = None
         self._start_var        = tk.StringVar()
+        self._show_lyrics_var  = tk.BooleanVar(value=False)
+        self._cues             = []
         self._suppress         = False
         self._up_btn           = None
         self._down_btn         = None
@@ -70,6 +83,17 @@ class AudioClipView:
         tk.Label(self._body, text=fmt_duration(duration),
                  bg=bg, fg=self._colors["fg_value"],
                  font=("Helvetica", 8), anchor="w").pack(fill=tk.X, pady=(0, 8))
+
+        # ── Cue step (computed from lyrics, shown in header) ──────
+        cues_all = info.get("lyrics", {}).get("cues", [])
+        self._cues = sorted(cues_all, key=lambda c: c.get("start", 0.0))
+        step = _cue_min_gap(self._cues)
+        if step > 0:
+            field_label(self._body, "Cue Step", self._colors)
+            step_txt = f"{step:.2f}s" if step != int(step) else f"{int(step)}s"
+            tk.Label(self._body, text=step_txt,
+                     bg=bg, fg=self._colors["fg_value"],
+                     font=("Helvetica", 8), anchor="w").pack(fill=tk.X, pady=(0, 8))
 
         ttk.Separator(self._body, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=(4, 8))
 
@@ -118,6 +142,24 @@ class AudioClipView:
         add_btn.pack(side=tk.RIGHT)
         self._add_btn = add_btn
 
+        # ── Timeline strip header (Show Lyrics checkbox) ──────────
+        strip_hdr = tk.Frame(self._body, bg=bg)
+        strip_hdr.pack(fill=tk.X, pady=(0, 4))
+        tk.Label(strip_hdr, text="Timeline", bg=bg,
+                 fg=self._colors["fg_dim_alt"],
+                 font=("Helvetica", 8)).pack(side=tk.LEFT)
+        if self._cues:
+            self._show_lyrics_var.trace_add("write", lambda *_: self._draw_strip())
+            tk.Checkbutton(strip_hdr, text="Show Lyrics",
+                           variable=self._show_lyrics_var,
+                           bg=bg,
+                           fg=self._colors["fg_value"],
+                           selectcolor=self._colors.get("bg_dark", "#252525"),
+                           activebackground=bg,
+                           activeforeground=self._colors["fg_primary"],
+                           font=("Helvetica", 8),
+                           cursor="hand2").pack(side=tk.RIGHT)
+
         # Mini strip showing images within this audio_clip's duration
         self._strip_canvas = tk.Canvas(
             self._body,
@@ -127,14 +169,13 @@ class AudioClipView:
         self._strip_canvas.pack(fill=tk.X, pady=(0, 6))
         self._strip_canvas.bind("<Configure>", lambda _e: self._draw_strip())
 
-        # Cues section (read-only)
-        cues = info.get("lyrics", {}).get("cues", [])
-        if cues:
+        # Cues section (read-only list)
+        if self._cues:
             ttk.Separator(self._body, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=(4, 8))
             tk.Label(self._body, text="Lyrics Cues", bg=bg,
                      fg=self._colors["fg_dim_alt"],
                      font=("Helvetica", 8)).pack(anchor="w")
-            self._build_cue_list(cues)
+            self._build_cue_list(self._cues)
 
         self._draw_strip()
 
@@ -213,7 +254,10 @@ class AudioClipView:
         if w <= 1:
             return
 
+        show_lyrics = self._show_lyrics_var.get() and bool(self._cues)
+        c.config(height=_STRIP_H_LYRC if show_lyrics else _STRIP_H)
         c.delete("all")
+
         dim      = self._colors["fg_dim_alt"]
         duration = self._node.get("duration") or 0.0
 
@@ -229,6 +273,17 @@ class AudioClipView:
         )
         px_per_s = (w - 4) / duration
 
+        # ── Cue marker lines (drawn first, behind image bars) ─────
+        if show_lyrics:
+            for cue in self._cues:
+                t = float(cue.get("start", 0.0))
+                if t > duration + 1e-9:
+                    break
+                x = 2 + t * px_per_s
+                c.create_line(x, _LANE_TOP, x, _LANE_BOT,
+                              fill="#6a3d6a", dash=(3, 3), width=1)
+
+        # ── Image bars ────────────────────────────────────────────
         for i, n in enumerate(images):
             t0 = n.get("start_time") or 0.0
             t1 = images[i + 1].get("start_time") if i + 1 < len(images) else duration
@@ -245,15 +300,36 @@ class AudioClipView:
                               text=label[:max_c - 1] + "…" if len(label) > max_c else label,
                               fill="white", font=("Helvetica", 7), anchor="center")
 
-        # Time ticks
+        # ── Time ticks (min interval ≥ min cue gap when lyrics on) ─
         inc = _nice_tick(duration)
-        t   = 0.0
+        if show_lyrics:
+            min_gap = _cue_min_gap(self._cues)
+            if min_gap > 0 and inc < min_gap:
+                for step in _TICK_STEPS:
+                    if step >= min_gap:
+                        inc = step
+                        break
+                else:
+                    inc = _TICK_STEPS[-1]
+
+        t = 0.0
         while t <= duration + 1e-9:
             x = 2 + t * px_per_s
             c.create_line(x, _LANE_BOT + 1, x, _LANE_BOT + 4, fill=dim, width=1)
             c.create_text(x, _LABEL_Y, text=f"{t:.0f}s" if t == int(t) else f"{t:.1f}s",
                           anchor="n", fill=dim, font=("Helvetica", 6))
             t = round(t + inc, 10)
+
+        # ── Cue text labels (to the right of each cue marker) ─────
+        if show_lyrics:
+            for cue in self._cues:
+                t    = float(cue.get("start", 0.0))
+                text = (cue.get("text") or "").strip()
+                if not text or t > duration + 1e-9:
+                    continue
+                x = 2 + t * px_per_s
+                c.create_text(x + 2, _CUE_Y, text=text[:20],
+                              anchor="nw", fill="#9b59b6", font=("Helvetica", 6))
 
     def _build_cue_list(self, cues: list):
         bg = self._colors["bg_darkest"]
