@@ -56,6 +56,7 @@ class VideoClipView:
         self._playhead_t          = 0.0
         self._pil_cache           = {}
         self._audio_clip_frame    = None
+        self._add_ac_btn          = None
 
     def build(self, node: dict):
         self._node = node
@@ -87,9 +88,20 @@ class VideoClipView:
 
         # ── Audio Clip section ────────────────────────────────────
         ttk.Separator(self._body, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=(2, 6))
-        tk.Label(self._body, text="Audio Clip", bg=bg,
+        ac_hdr = tk.Frame(self._body, bg=bg)
+        ac_hdr.pack(fill=tk.X, pady=(0, 2))
+        tk.Label(ac_hdr, text="Audio Clip", bg=bg,
                  fg=self._colors["fg_dim_alt"],
-                 font=("Helvetica", 8)).pack(anchor="w")
+                 font=("Helvetica", 8)).pack(side=tk.LEFT)
+        self._add_ac_btn = tk.Button(
+            ac_hdr, text="+",
+            command=self._do_add_assets,
+            bg="#555555", fg="#999",
+            activebackground="#555555", activeforeground="#999",
+            relief=tk.FLAT, bd=0, padx=6, pady=1,
+            font=("Helvetica", 9, "bold"), cursor="",
+        )
+        self._add_ac_btn.pack(side=tk.RIGHT)
         self._audio_clip_frame = tk.Frame(self._body, bg=bg)
         self._audio_clip_frame.pack(fill=tk.X, pady=(2, 8))
         self._refresh_audio_clip_section()
@@ -161,6 +173,21 @@ class VideoClipView:
                 self._add_btn.config(bg="#555555", fg="#999",
                                      activebackground="#555555", activeforeground="#999",
                                      cursor="")
+        except tk.TclError:
+            pass
+
+    def set_add_audio_clip_button_state(self, enabled: bool):
+        if not self._add_ac_btn:
+            return
+        try:
+            if enabled:
+                self._add_ac_btn.config(bg="#28a745", fg="white",
+                                        activebackground="#1e7e34", activeforeground="white",
+                                        cursor="hand2")
+            else:
+                self._add_ac_btn.config(bg="#555555", fg="#999",
+                                        activebackground="#555555", activeforeground="#999",
+                                        cursor="")
         except tk.TclError:
             pass
 

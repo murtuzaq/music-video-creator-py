@@ -229,7 +229,10 @@ class MusicVideoCreator(tk.Tk):
 
     def _on_asset_selection_change(self):
         assets = self.asset_panel.get_selected_assets()
-        self.inspector_panel.set_add_button_state(len(assets) > 0)
+        has_ac  = any(a.get("type") == "audio_clip" for a in assets)
+        has_any = len(assets) > 0
+        self.inspector_panel.set_add_button_state(has_any)
+        self.inspector_panel.set_add_audio_clip_button_state(has_ac)
         if len(assets) == 1:
             self.asset_inspector_panel.show_asset(assets[0])
         elif len(assets) > 1:

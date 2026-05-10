@@ -234,6 +234,10 @@ class InspectorPanel:
         if self._current_view and hasattr(self._current_view, "set_add_button_state"):
             self._current_view.set_add_button_state(enabled)
 
+    def set_add_audio_clip_button_state(self, enabled: bool):
+        if self._current_view and hasattr(self._current_view, "set_add_audio_clip_button_state"):
+            self._current_view.set_add_audio_clip_button_state(enabled)
+
     def clear(self):
         self._current_type           = None
         self._current_node           = None
