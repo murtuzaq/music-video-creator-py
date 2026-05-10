@@ -9,13 +9,11 @@ except ImportError:
     _PIL = False
 
 _IMAGE_EXT = {".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp", ".tiff", ".tif"}
-_AUDIO_EXT = {".mp3", ".wav", ".aac", ".ogg", ".flac", ".m4a", ".wma"}
 _INFO_EXT  = {".info"}
 
 _ICON_COLORS = {
     "folder":     "#888888",
     "image":      "#5cb85c",
-    "audio":      "#4a90d9",
     "audio_clip": "#8e44ad",
 }
 
@@ -46,9 +44,6 @@ def _scan_folder(root_path: str) -> dict:
                 if ext in _IMAGE_EXT:
                     children.append({"name": entry.name, "path": entry.path,
                                      "type": "image", "children": []})
-                elif ext in _AUDIO_EXT:
-                    children.append({"name": entry.name, "path": entry.path,
-                                     "type": "audio", "children": []})
                 elif ext in _INFO_EXT:
                     children.append({"name": entry.name, "path": entry.path,
                                      "type": "audio_clip", "children": []})
