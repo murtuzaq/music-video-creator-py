@@ -29,7 +29,8 @@ def generate(project_data: dict, output_path: str,
     _report(0.87, "Concatenating clips…")
     final = concatenate_videoclips(built, method="compose")
 
-    _report(0.90, "Encoding — this may take a while…")
+    # fraction=None → caller switches to indeterminate/busy bar
+    _report(None, "Encoding — this may take a while…")
     final.write_videofile(
         output_path, fps=fps,
         codec="libx264", audio_codec="aac",

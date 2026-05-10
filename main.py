@@ -52,6 +52,7 @@ class MusicVideoCreator(tk.Tk):
         self._project_paths                = {}   # root_id -> filepath
         self._current_clip_id              = None
         self._current_asset_id             = None
+        self._active_generation            = None  # {root_id, fraction, message, active}
         self._auto_space_enabled           = tk.BooleanVar(value=False)
         self._auto_space_enabled.trace_add("write", self._on_auto_space_changed)
         self._current_asset_clip_id        = None
@@ -175,10 +176,17 @@ class MusicVideoCreator(tk.Tk):
             self._current_asset_id       = None
             self._current_asset_clip_id  = None
             total_dur = self.project_panel.get_total_duration(item_id)
+            gen       = self._active_generation
+            is_gen    = (gen is not None
+                         and gen["root_id"] == item_id
+                         and gen["active"])
             self.inspector_panel.show_project(
                 node, total_dur,
                 on_generate=lambda iid=item_id: self._start_generate(iid),
                 has_valid_clips=self._has_valid_clips(item_id),
+                generating=is_gen,
+                generate_fraction=gen["fraction"] if is_gen else 0.0,
+                generate_message=gen["message"] if is_gen else "",
             )
         elif node_type == "video_clip":
             same_clip = (item_id == self._current_clip_id or
@@ -518,6 +526,8 @@ class MusicVideoCreator(tk.Tk):
     def _start_generate(self, root_id: str):
         if not self._has_valid_clips(root_id):
             return
+        if self._active_generation and self._active_generation["active"]:
+            return
         out_path = filedialog.asksaveasfilename(
             title="Save Video As",
             defaultextension=".mp4",
@@ -526,14 +536,27 @@ class MusicVideoCreator(tk.Tk):
         if not out_path:
             return
 
+        self._active_generation = {
+            "root_id": root_id,
+            "fraction": 0.0,
+            "message": "Starting…",
+            "active": True,
+        }
+
         project_data = self.project_panel.get_project_data(root_id)
         self.inspector_panel.update_generate_progress(0.0, "Starting…")
 
         def _progress(fraction, message):
+            if self._active_generation:
+                self._active_generation["fraction"] = fraction
+                self._active_generation["message"]  = message
+                done = fraction is not None and (fraction >= 1.0 or fraction < 0)
+                if done:
+                    self._active_generation["active"] = False
             self.inspector_panel.update_generate_progress(fraction, message)
-            if fraction >= 1.0:
+            if fraction is not None and fraction >= 1.0:
                 self.bottom_bar.set_status(f"Video saved: {os.path.basename(out_path)}")
-            elif fraction < 0:
+            elif fraction is not None and fraction < 0:
                 self.bottom_bar.set_status(f"Generation failed: {message}")
 
         import threading

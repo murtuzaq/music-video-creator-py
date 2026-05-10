@@ -11,18 +11,20 @@ _BTN_OFF = {"bg": "#555555", "fg": "#888888", "activebackground": "#555555",
 
 class ProjectView:
     def __init__(self, body: tk.Frame, colors: dict):
-        self._body         = body
-        self._colors       = colors
-        self._on_generate  = None
-        self._has_valid    = False
-        self._gen_btn      = None
-        self._hint_lbl     = None
-        self._prog_frame   = None
-        self._prog_bar     = None
-        self._prog_lbl     = None
+        self._body        = body
+        self._colors      = colors
+        self._on_generate = None
+        self._has_valid   = False
+        self._gen_btn     = None
+        self._prog_frame  = None
+        self._prog_bar    = None
+        self._prog_lbl    = None
+        self._prog_shown  = False
 
     def build(self, node: dict, total_duration: float,
-              on_generate=None, has_valid_clips: bool = False):
+              on_generate=None, has_valid_clips: bool = False,
+              generating: bool = False,
+              generate_fraction=0.0, generate_message: str = ""):
         self._on_generate = on_generate
         self._has_valid   = has_valid_clips
         bg   = self._colors["bg_darkest"]
@@ -48,15 +50,14 @@ class ProjectView:
         self._gen_btn.pack(fill=tk.X, padx=8)
 
         if not has_valid_clips:
-            self._hint_lbl = tk.Label(
+            tk.Label(
                 self._body,
                 text="Add a video clip with\nduration > 0 to generate",
                 bg=bg, fg=self._colors["fg_dim"],
                 font=("Helvetica", 8), justify=tk.CENTER,
-            )
-            self._hint_lbl.pack(pady=(4, 0))
+            ).pack(pady=(4, 0))
 
-        # Progress area (hidden until generation starts)
+        # Progress area — built but hidden until generation starts
         self._prog_frame = tk.Frame(self._body, bg=bg)
         self._prog_bar   = ttk.Progressbar(self._prog_frame, mode="determinate", maximum=100)
         self._prog_bar.pack(fill=tk.X)
@@ -65,14 +66,33 @@ class ProjectView:
                                      font=("Helvetica", 8))
         self._prog_lbl.pack(pady=(2, 0))
 
+        # Restore in-progress state if we navigated away mid-generation
+        if generating:
+            self.set_progress(generate_fraction, generate_message)
+
     # ── Public ────────────────────────────────────────────────────
 
-    def set_progress(self, fraction: float, message: str):
+    def set_progress(self, fraction, message: str):
         if not self._prog_frame:
             return
 
-        if not self._prog_frame.winfo_ismapped():
+        if not self._prog_shown:
             self._prog_frame.pack(fill=tk.X, padx=8, pady=(10, 0))
+            self._prog_shown = True
+
+        if fraction is None:
+            # Encoding phase — switch to indeterminate spinner
+            self._prog_bar.stop()
+            self._prog_bar.config(mode="indeterminate")
+            self._prog_bar.start(15)
+            self._prog_lbl.config(text=message, fg=self._colors["fg_dim_alt"])
+            self._set_btn_enabled(False)
+            return
+
+        # Stop spinner if it was running
+        if self._prog_bar.cget("mode") == "indeterminate":
+            self._prog_bar.stop()
+            self._prog_bar.config(mode="determinate")
 
         if fraction < 0:
             self._prog_bar["value"] = 0
@@ -82,11 +102,7 @@ class ProjectView:
 
         self._prog_bar["value"] = int(fraction * 100)
         self._prog_lbl.config(text=message, fg=self._colors["fg_dim_alt"])
-
-        if fraction >= 1.0:
-            self._set_btn_enabled(True)
-        else:
-            self._set_btn_enabled(False)
+        self._set_btn_enabled(fraction >= 1.0)
 
     def on_resize(self, width: int):
         pass
@@ -101,6 +117,7 @@ class ProjectView:
         if not self._gen_btn:
             return
         active = enabled and self._has_valid
-        state  = "normal" if active else "disabled"
-        style  = _BTN_ON if active else _BTN_OFF
-        self._gen_btn.config(state=state, **style)
+        self._gen_btn.config(
+            state="normal" if active else "disabled",
+            **((_BTN_ON if active else _BTN_OFF)),
+        )

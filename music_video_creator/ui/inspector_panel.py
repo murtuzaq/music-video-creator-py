@@ -31,6 +31,9 @@ class InspectorPanel:
         self._on_manual_adjust       = None
         self._on_generate            = None
         self._has_valid_clips        = False
+        self._generating             = False
+        self._generate_fraction      = 0.0
+        self._generate_message       = ""
         self._auto_space_var         = None
         self._get_children           = None
         self._project_total_duration = 0.0
@@ -99,7 +102,9 @@ class InspectorPanel:
             self.show_image(self._current_node)
         elif self._current_type == "video":
             self.show_project(self._current_node, self._project_total_duration,
-                              self._on_generate, self._has_valid_clips)
+                              self._on_generate, self._has_valid_clips,
+                              self._generating, self._generate_fraction,
+                              self._generate_message)
         elif self._current_type == "audio":
             self.show_audio(self._current_node)
         elif self._current_type == "video_clip":
@@ -130,19 +135,27 @@ class InspectorPanel:
         self._current_view = view
 
     def show_project(self, node: dict, total_duration: float = 0.0,
-                     on_generate=None, has_valid_clips: bool = False):
+                     on_generate=None, has_valid_clips: bool = False,
+                     generating: bool = False,
+                     generate_fraction=0.0, generate_message: str = ""):
         self._current_type           = "video"
         self._current_node           = node
         self._project_total_duration = total_duration
         self._on_generate            = on_generate
         self._has_valid_clips        = has_valid_clips
+        self._generating             = generating
+        self._generate_fraction      = generate_fraction
+        self._generate_message       = generate_message
         self._clear()
         view = ProjectView(self._body, self._colors)
         view.build(node, total_duration,
-                   on_generate=on_generate, has_valid_clips=has_valid_clips)
+                   on_generate=on_generate, has_valid_clips=has_valid_clips,
+                   generating=generating,
+                   generate_fraction=generate_fraction,
+                   generate_message=generate_message)
         self._current_view = view
 
-    def update_generate_progress(self, fraction: float, message: str):
+    def update_generate_progress(self, fraction, message: str):
         if self._current_view and hasattr(self._current_view, "set_progress"):
             self._current_view.set_progress(fraction, message)
 
@@ -201,6 +214,9 @@ class InspectorPanel:
         self._on_manual_adjust       = None
         self._on_generate            = None
         self._has_valid_clips        = False
+        self._generating             = False
+        self._generate_fraction      = 0.0
+        self._generate_message       = ""
         self._auto_space_var         = None
         self._get_children           = None
         self._project_total_duration = 0.0
