@@ -196,6 +196,11 @@ class ProjectPanel:
         if 0 <= new_idx < len(siblings):
             self._tree.move(item_id, parent_id, new_idx)
 
+    def remove_child(self, item_id: str):
+        """Remove a child node from the tree and internal dict."""
+        self._purge_node(item_id)
+        self._tree.delete(item_id)
+
     def add_asset_to_clip(self, clip_id: str, asset: dict) -> str:
         ntype  = asset.get("type", "image")
         path   = asset.get("path")

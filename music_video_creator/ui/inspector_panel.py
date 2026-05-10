@@ -29,6 +29,7 @@ class InspectorPanel:
         self._on_update              = None
         self._on_add_assets          = None
         self._on_add_images          = None
+        self._on_remove_audio_clip   = None
         self._on_reorder             = None
         self._on_manual_adjust       = None
         self._on_generate            = None
@@ -112,7 +113,7 @@ class InspectorPanel:
         elif self._current_type == "video_clip":
             self.show_video_clip(self._current_node, self._on_update,
                                  self._on_add_assets, self._auto_space_var,
-                                 self._get_children)
+                                 self._get_children, self._on_remove_audio_clip)
         elif self._current_type == "asset_in_clip":
             self.show_asset_in_clip(self._current_node, self._on_update,
                                     self._parent_duration, self._on_reorder,
@@ -168,18 +169,23 @@ class InspectorPanel:
 
     def show_video_clip(self, node: dict, on_update=None,
                         on_add_assets=None, auto_space_var=None,
-                        get_children=None):
-        self._current_type   = "video_clip"
-        self._current_node   = node
-        self._on_update      = on_update
-        self._on_add_assets  = on_add_assets
-        self._auto_space_var = auto_space_var
-        self._get_children   = get_children
+                        get_children=None, on_remove_audio_clip=None):
+        self._current_type           = "video_clip"
+        self._current_node           = node
+        self._on_update              = on_update
+        self._on_add_assets          = on_add_assets
+        self._on_remove_audio_clip   = on_remove_audio_clip
+        self._auto_space_var         = auto_space_var
+        self._get_children           = get_children
         self._clear()
         view = VideoClipView(self._body, self._colors, on_update, on_add_assets,
-                             auto_space_var, get_children)
+                             auto_space_var, get_children, on_remove_audio_clip)
         view.build(node)
         self._current_view = view
+
+    def update_clip_duration(self, dur: float):
+        if self._current_view and hasattr(self._current_view, "update_duration"):
+            self._current_view.update_duration(dur)
 
     def show_asset_in_clip(self, node: dict, on_update=None,
                            parent_duration: float = 0.0, on_reorder=None,
@@ -235,6 +241,7 @@ class InspectorPanel:
         self._on_update              = None
         self._on_add_assets          = None
         self._on_add_images          = None
+        self._on_remove_audio_clip   = None
         self._on_reorder             = None
         self._on_manual_adjust       = None
         self._on_generate            = None

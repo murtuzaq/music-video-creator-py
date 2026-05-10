@@ -11,10 +11,11 @@ from ._helpers import field_label
 
 _TICK_STEPS = (0.05, 0.1, 0.2, 0.25, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300)
 
-_LANE_TOP = 10
-_LANE_BOT = 46
-_LABEL_Y  = 58
-_STRIP_H  = 72
+_LANE_TOP  = 10
+_LANE_BOT  = 46
+_LABEL_Y   = 58
+_CUE_Y     = 74
+_STRIP_H   = 90
 
 
 def _nice_tick(total: float, target_count: int = 6) -> float:
@@ -25,24 +26,36 @@ def _nice_tick(total: float, target_count: int = 6) -> float:
     return _TICK_STEPS[-1]
 
 
+def _cue_min_gap(cues: list) -> float:
+    """Return the smallest gap between consecutive cue start times, or 0 if not enough cues."""
+    if len(cues) < 2:
+        return 0.0
+    gaps = [cues[i + 1]["start"] - cues[i]["start"]
+            for i in range(len(cues) - 1)
+            if cues[i + 1]["start"] > cues[i]["start"]]
+    return min(gaps) if gaps else 0.0
+
+
 class VideoClipView:
     def __init__(self, body: tk.Frame, colors: dict,
                  on_update=None, on_add_assets=None, auto_space_var=None,
-                 get_children=None):
-        self._body           = body
-        self._colors         = colors
-        self._on_update      = on_update
-        self._on_add_assets  = on_add_assets
-        self._auto_space_var = auto_space_var or tk.BooleanVar(value=False)
-        self._get_children   = get_children
-        self._add_btn        = None
-        self._name_var       = tk.StringVar()
-        self._dur_var        = tk.StringVar()
-        self._node           = None
-        self._preview_lbl    = None
-        self._strip_canvas   = None
-        self._playhead_t     = 0.0
-        self._pil_cache      = {}
+                 get_children=None, on_remove_audio_clip=None):
+        self._body                = body
+        self._colors              = colors
+        self._on_update           = on_update
+        self._on_add_assets       = on_add_assets
+        self._auto_space_var      = auto_space_var or tk.BooleanVar(value=False)
+        self._get_children        = get_children
+        self._on_remove_audio_clip = on_remove_audio_clip
+        self._add_btn             = None
+        self._name_var            = tk.StringVar()
+        self._dur_var             = tk.StringVar()
+        self._node                = None
+        self._preview_lbl         = None
+        self._strip_canvas        = None
+        self._playhead_t          = 0.0
+        self._pil_cache           = {}
+        self._audio_clip_frame    = None
 
     def build(self, node: dict):
         self._node = node
@@ -71,6 +84,15 @@ class VideoClipView:
                  insertbackground=self._colors["fg_primary"],
                  relief=tk.FLAT, bd=4,
                  font=("Helvetica", 9)).pack(fill=tk.X, pady=(0, 8))
+
+        # ── Audio Clip section ────────────────────────────────────
+        ttk.Separator(self._body, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=(2, 6))
+        tk.Label(self._body, text="Audio Clip", bg=bg,
+                 fg=self._colors["fg_dim_alt"],
+                 font=("Helvetica", 8)).pack(anchor="w")
+        self._audio_clip_frame = tk.Frame(self._body, bg=bg)
+        self._audio_clip_frame.pack(fill=tk.X, pady=(2, 8))
+        self._refresh_audio_clip_section()
 
         # ── Duration ──────────────────────────────────────────────
         field_label(self._body, "Duration (seconds)", self._colors)
@@ -143,14 +165,63 @@ class VideoClipView:
             pass
 
     def refresh_timeline(self):
+        self._refresh_audio_clip_section()
         self._draw_strip()
         self._update_preview()
+
+    def update_duration(self, dur: float):
+        self._node["duration"] = dur
+        self._dur_var.set(str(dur))
+        self._draw_strip()
 
     def on_resize(self, width: int):
         self._draw_strip()
         self._update_preview()
 
     # ── Private ───────────────────────────────────────────────────
+
+    def _refresh_audio_clip_section(self):
+        if not self._audio_clip_frame:
+            return
+        try:
+            for w in self._audio_clip_frame.winfo_children():
+                w.destroy()
+        except tk.TclError:
+            return
+
+        bg  = self._colors["bg_darkest"]
+        children = self._get_children() if self._get_children else []
+        ac = next((n for n in children if n.get("type") == "audio_clip"), None)
+
+        if ac:
+            name = ac.get("name") or "Audio Clip"
+            dur  = float(ac.get("duration") or 0.0)
+            tk.Label(self._audio_clip_frame,
+                     text=f"🎵  {name}  ({dur:.1f}s)",
+                     bg=bg, fg="#8e44ad",
+                     font=("Helvetica", 8, "bold"),
+                     anchor="w", wraplength=170).pack(side=tk.LEFT, fill=tk.X, expand=True)
+            if self._on_remove_audio_clip:
+                tk.Button(self._audio_clip_frame, text="×",
+                          command=self._do_remove_audio_clip,
+                          bg=bg, fg=self._colors["fg_dim_alt"],
+                          relief=tk.FLAT, bd=0,
+                          font=("Helvetica", 11),
+                          cursor="hand2",
+                          activebackground=self._colors.get("bg_medium", "#2b2b2b"),
+                          activeforeground=self._colors["fg_primary"]).pack(side=tk.RIGHT)
+        else:
+            tk.Label(self._audio_clip_frame,
+                     text="None — add a .info file from Assets",
+                     bg=bg, fg=self._colors["fg_dim"],
+                     font=("Helvetica", 8), anchor="w").pack(side=tk.LEFT)
+
+    def _do_remove_audio_clip(self):
+        if self._on_remove_audio_clip:
+            self._on_remove_audio_clip()
+        self._refresh_audio_clip_section()
+        self._draw_strip()
+        self._update_preview()
 
     def _do_add_assets(self):
         if self._on_add_assets:
@@ -196,6 +267,13 @@ class VideoClipView:
         self._draw_strip()
         self._update_preview()
 
+    def _get_ac_and_cues(self, children: list):
+        """Return (ac_node_or_None, sorted_cues_list)."""
+        ac = next((n for n in children if n.get("type") == "audio_clip"), None)
+        cues = sorted((ac.get("_cues") or []) if ac else [],
+                      key=lambda c: c.get("start", 0.0))
+        return ac, cues
+
     def _draw_strip(self):
         c = self._strip_canvas
         if not c:
@@ -218,75 +296,63 @@ class VideoClipView:
                           fill=dim, font=("Helvetica", 8))
             return
 
-        children = self._get_children() if self._get_children else []
-        assets   = sorted(children, key=lambda n: n.get("start_time") or 0.0)
+        children     = self._get_children() if self._get_children else []
+        _, cues      = self._get_ac_and_cues(children)
+        direct_audio = [n for n in children if n.get("type") == "audio"]
+        direct_imgs  = sorted([n for n in children if n.get("type") == "image"],
+                              key=lambda n: n.get("start_time") or 0.0)
+
         px_per_s = (w - 4) / dur
 
-        audio_clips  = [n for n in assets if n.get("type") == "audio_clip"]
-        direct_audio = [n for n in assets if n.get("type") == "audio"]
-        direct_imgs  = [n for n in assets if n.get("type") == "image"]
-
-        def _bar_label(canvas, x0, x1, y_mid, text, color="white"):
+        def _bar_label(x0, x1, y_mid, text):
             bar_w = x1 - x0
             if bar_w > 16:
                 max_c = max(1, int(bar_w / 6))
-                label = text[:max_c - 1] + "…" if len(text) > max_c else text
-                canvas.create_text((x0 + x1) / 2, y_mid, text=label,
-                                   fill=color, font=("Helvetica", 7), anchor="center")
+                lbl   = text[:max_c - 1] + "…" if len(text) > max_c else text
+                c.create_text((x0 + x1) / 2, y_mid, text=lbl,
+                              fill="white", font=("Helvetica", 7), anchor="center")
 
-        # ── Pass 1: audio_clip blocks (purple) ────────────────────
-        _INNER_TOP = _LANE_TOP + 14
-        _INNER_BOT = _LANE_BOT - 2
-        for n in audio_clips:
-            t0 = float(n.get("start_time") or 0.0)
-            t1 = min(t0 + float(n.get("duration") or 0.0), dur)
-            x0 = 2 + t0 * px_per_s
-            x1 = max(x0 + 3, 2 + t1 * px_per_s)
-            c.create_rectangle(x0, _LANE_TOP, x1, _LANE_BOT, fill="#8e44ad", outline="")
-            name = n.get("name") or "audio clip"
-            bar_w = x1 - x0
-            if bar_w > 16:
-                max_c = max(1, int(bar_w / 6))
-                lbl = name[:max_c - 1] + "…" if len(name) > max_c else name
-                c.create_text((x0 + x1) / 2, _LANE_TOP + 7,
-                              text=lbl, fill="white", font=("Helvetica", 7), anchor="center")
-            # sub-images inside the audio_clip block
-            ac_images = sorted(n.get("_ac_images", []),
-                               key=lambda img: img.get("start_time") or 0.0)
-            ac_dur = float(n.get("duration") or 0.0)
-            for j, img in enumerate(ac_images):
-                rel_t0 = float(img.get("start_time") or 0.0)
-                rel_t1 = float(ac_images[j + 1].get("start_time") or 0.0) if j + 1 < len(ac_images) else ac_dur
-                ix0 = 2 + (t0 + rel_t0) * px_per_s
-                ix1 = max(ix0 + 2, 2 + (t0 + rel_t1) * px_per_s)
-                c.create_rectangle(ix0, _INNER_TOP, ix1, _INNER_BOT, fill="#5cb85c", outline="")
-                _bar_label(c, ix0, ix1, (_INNER_TOP + _INNER_BOT) / 2,
-                           img.get("name") or "img")
+        # ── Cue marker background lines ───────────────────────────
+        for cue in cues:
+            t = float(cue.get("start", 0.0))
+            if t > dur + 1e-9:
+                break
+            x = 2 + t * px_per_s
+            c.create_line(x, _LANE_TOP, x, _LANE_BOT,
+                          fill="#6a3d6a", dash=(3, 3), width=1)
 
-        # ── Pass 2: direct audio bars (blue) ──────────────────────
+        # ── Direct audio bars (blue) ──────────────────────────────
         for n in direct_audio:
             t0 = float(n.get("start_time") or 0.0)
             t1 = t0 + float(n.get("_audio_dur") or 0.0)
             x0 = 2 + t0 * px_per_s
             x1 = max(x0 + 3, 2 + t1 * px_per_s)
             c.create_rectangle(x0, _LANE_TOP, x1, _LANE_BOT, fill="#4a90d9", outline="")
-            _bar_label(c, x0, x1, (_LANE_TOP + _LANE_BOT) / 2, n.get("name") or "audio")
+            _bar_label(x0, x1, (_LANE_TOP + _LANE_BOT) / 2, n.get("name") or "audio")
 
-        # ── Pass 3: direct image bars (green) ─────────────────────
-        direct_imgs_s = sorted(direct_imgs, key=lambda n: n.get("start_time") or 0.0)
-        for i, n in enumerate(direct_imgs_s):
+        # ── Image bars (green) ────────────────────────────────────
+        for i, n in enumerate(direct_imgs):
             t0 = float(n.get("start_time") or 0.0)
-            t1 = float(direct_imgs_s[i + 1].get("start_time") or 0.0) if i + 1 < len(direct_imgs_s) else dur
+            t1 = float(direct_imgs[i + 1].get("start_time") or 0.0) if i + 1 < len(direct_imgs) else dur
             if t1 is None:
                 t1 = dur
             x0 = 2 + t0 * px_per_s
             x1 = max(x0 + 3, 2 + t1 * px_per_s)
             c.create_rectangle(x0, _LANE_TOP, x1, _LANE_BOT, fill="#5cb85c", outline="")
-            _bar_label(c, x0, x1, (_LANE_TOP + _LANE_BOT) / 2, n.get("name") or "img")
+            _bar_label(x0, x1, (_LANE_TOP + _LANE_BOT) / 2, n.get("name") or "img")
 
-        # ── time ticks ─────────────────────────────────────────────
+        # ── Time ticks (min interval ≥ min cue gap) ───────────────
         inc = _nice_tick(dur)
-        t   = 0.0
+        min_gap = _cue_min_gap(cues)
+        if min_gap > 0 and inc < min_gap:
+            for step in _TICK_STEPS:
+                if step >= min_gap:
+                    inc = step
+                    break
+            else:
+                inc = _TICK_STEPS[-1]
+
+        t = 0.0
         while t <= dur + 1e-9:
             x     = 2 + t * px_per_s
             label = f"{int(t)}s" if abs(t - round(t)) < 1e-6 else f"{t:.1f}s"
@@ -295,7 +361,17 @@ class VideoClipView:
                           fill=dim, font=("Helvetica", 7))
             t = round(t + inc, 10)
 
-        # ── playhead ───────────────────────────────────────────────
+        # ── Cue text labels ───────────────────────────────────────
+        for cue in cues:
+            t    = float(cue.get("start", 0.0))
+            text = (cue.get("text") or "").strip()
+            if not text or t > dur + 1e-9:
+                continue
+            x = 2 + t * px_per_s
+            c.create_text(x + 2, _CUE_Y, text=text[:18],
+                          anchor="nw", fill="#9b59b6", font=("Helvetica", 6))
+
+        # ── Playhead ──────────────────────────────────────────────
         px = 2 + self._playhead_t * px_per_s
         c.create_polygon(px - 5, 0, px + 5, 0, px, 8, fill="white", outline="")
         c.create_line(px, 0, px, _LANE_BOT + 2, fill="white", width=2)
@@ -311,26 +387,15 @@ class VideoClipView:
             return
 
         children = self._get_children() if self._get_children else []
-
-        # Flatten images: direct + audio_clip sub-images with absolute start times
-        all_images = []
-        for n in children:
-            if n.get("type") == "image":
-                all_images.append({"path": n.get("path"),
-                                   "start_time": float(n.get("start_time") or 0.0)})
-            elif n.get("type") == "audio_clip":
-                ac_start = float(n.get("start_time") or 0.0)
-                for img in n.get("_ac_images", []):
-                    all_images.append({
-                        "path": img.get("path"),
-                        "start_time": img.get("_abs_start", ac_start + float(img.get("start_time") or 0.0)),
-                    })
-        all_images.sort(key=lambda n: n["start_time"])
+        images   = sorted(
+            [n for n in children if n.get("type") == "image"],
+            key=lambda n: n.get("start_time") or 0.0,
+        )
 
         active_path = None
-        for n in reversed(all_images):
-            if n["start_time"] <= self._playhead_t + 1e-9:
-                active_path = n["path"]
+        for n in reversed(images):
+            if (n.get("start_time") or 0.0) <= self._playhead_t + 1e-9:
+                active_path = n.get("path")
                 break
 
         if not active_path:
