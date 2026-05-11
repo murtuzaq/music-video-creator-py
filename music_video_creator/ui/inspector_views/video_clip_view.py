@@ -66,6 +66,7 @@ class VideoClipView:
         self._ac_start_entry      = None
         self._ac_end_entry        = None
         self._ac_file_dur         = 0.0
+        self._ac_t_start          = 0.0   # effective audio-file start offset shown on timeline
 
     def build(self, node: dict):
         self._node = node
@@ -284,6 +285,7 @@ class VideoClipView:
             self._use_full_var.set(use_full)
             self._ac_start_var.set(f"{start_t:.3f}")
             self._ac_end_var.set(f"{end_t:.3f}")
+            self._ac_t_start = 0.0 if use_full else start_t
 
             # "Use entire audio file" checkbox
             tk.Checkbutton(
@@ -332,6 +334,7 @@ class VideoClipView:
         else:
             self._cues        = []
             self._ac_file_dur = 0.0
+            self._ac_t_start  = 0.0
             tk.Label(self._audio_clip_frame,
                      text="None — add a .info file from Assets",
                      bg=bg, fg=dim,
@@ -359,13 +362,16 @@ class VideoClipView:
             real_node["audio_clip_use_full"] = use_full
         self._update_ac_fields()
         if use_full:
+            self._ac_t_start = 0.0
             new_dur = self._ac_file_dur
         else:
             try:
                 s = float(self._ac_start_var.get())
                 e = float(self._ac_end_var.get())
+                self._ac_t_start = s
                 new_dur = max(0.0, e - s)
             except ValueError:
+                self._ac_t_start = 0.0
                 new_dur = self._ac_file_dur
         self._dur_var.set(str(round(new_dur, 3)))
 
@@ -396,6 +402,7 @@ class VideoClipView:
             end = file_dur
         real_node["audio_clip_start"] = start
         real_node["audio_clip_end"]   = end
+        self._ac_t_start = start
         self._ac_start_var.set(f"{start:.3f}")
         self._ac_end_var.set(f"{end:.3f}")
         self._dur_var.set(str(round(max(0.0, end - start), 3)))
@@ -489,10 +496,7 @@ class VideoClipView:
         direct_imgs  = sorted([n for n in children if n.get("type") == "image"],
                               key=lambda n: n.get("start_time") or 0.0)
 
-        rn        = self._get_node() if self._get_node else self._node
-        use_full  = rn.get("audio_clip_use_full", True) if rn else True
-        ac_start  = 0.0 if (not rn or use_full) else float(rn.get("audio_clip_start") or 0.0)
-
+        ac_start = self._ac_t_start
         px_per_s = (w - 4) / dur
 
         def _bar_label(x0, x1, y_mid, text):
