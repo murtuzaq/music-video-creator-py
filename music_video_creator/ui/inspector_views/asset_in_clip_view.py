@@ -15,9 +15,13 @@ M_TOP = 10
 M_BOT = 10
 LX    = 55
 
-_PREVIEW_H_DEFAULT = 200
-_PREVIEW_H_MIN     = 60
-_PREVIEW_H_MAX     = 600
+_PREVIEW_H_DEFAULT  = 200
+_PREVIEW_H_MIN      = 60
+_PREVIEW_H_MAX      = 600
+
+_TIMELINE_H_DEFAULT = 160
+_TIMELINE_H_MIN     = 80
+_TIMELINE_H_MAX     = 600
 
 
 def _nice_tick(view_dur: float) -> float:
@@ -55,9 +59,12 @@ class AssetInClipView:
         self._preview_h         = _PREVIEW_H_DEFAULT
         self._pane_resize_y0    = None
         self._pane_resize_h0    = None
-        self._start_var         = tk.StringVar()
-        self._suppress_manual   = False
-        self._timeline_canvas   = None
+        self._start_var              = tk.StringVar()
+        self._suppress_manual        = False
+        self._timeline_canvas        = None
+        self._timeline_h             = _TIMELINE_H_DEFAULT
+        self._timeline_resize_y0     = None
+        self._timeline_resize_h0     = None
         self._view_duration     = 0.0
         self._parent_duration   = 0.0
         self._node              = None
@@ -166,8 +173,8 @@ class AssetInClipView:
         self._timeline_canvas = tk.Canvas(ctrl,
                                           bg=bg, highlightthickness=1,
                                           highlightcolor=self._colors.get("bg_dark", "#252525"),
-                                          height=160)
-        self._timeline_canvas.pack(fill=tk.X, pady=(0, 4))
+                                          height=self._timeline_h)
+        self._timeline_canvas.pack(fill=tk.X, pady=(0, 0))
         c = self._timeline_canvas
         c.bind("<Configure>", lambda _e: self._draw_timeline())
         c.bind("<Button-1>",  self._on_timeline_click)
@@ -176,6 +183,14 @@ class AssetInClipView:
         c.bind("<Leave>",     lambda _e: c.config(cursor=""))
         c.bind("<Up>",        lambda e:  self._move_in_time(-1))
         c.bind("<Down>",      lambda e:  self._move_in_time(1))
+
+        # timeline resize handle
+        tl_handle = tk.Frame(ctrl,
+                             bg=self._colors.get("bg_medium", "#2b2b2b"),
+                             height=6, cursor="sb_v_double_arrow")
+        tl_handle.pack(fill=tk.X, pady=(0, 4))
+        tl_handle.bind("<Button-1>",  self._on_timeline_resize_start)
+        tl_handle.bind("<B1-Motion>", self._on_timeline_resize_drag)
 
     # ── Public ────────────────────────────────────────────────────
 
@@ -216,6 +231,22 @@ class AssetInClipView:
         except tk.TclError:
             pass
         self._refresh_preview()
+
+    def _on_timeline_resize_start(self, event):
+        self._timeline_resize_y0 = event.y_root
+        self._timeline_resize_h0 = (self._timeline_canvas.winfo_height()
+                                     if self._timeline_canvas else self._timeline_h)
+
+    def _on_timeline_resize_drag(self, event):
+        if self._timeline_resize_y0 is None or not self._timeline_canvas:
+            return
+        delta = event.y_root - self._timeline_resize_y0
+        new_h = max(_TIMELINE_H_MIN, min(_TIMELINE_H_MAX, self._timeline_resize_h0 + delta))
+        self._timeline_h = int(new_h)
+        try:
+            self._timeline_canvas.config(height=self._timeline_h)
+        except tk.TclError:
+            pass
 
     def _on_lyrics_toggle_click(self):
         val = self._show_lyrics_var.get()
@@ -289,8 +320,10 @@ class AssetInClipView:
             return
 
         c.delete("all")
-        dim   = self._colors["fg_dim_alt"]
-        arrow = "#28a745"
+        dim       = self._colors["fg_dim_alt"]
+        arrow     = "#28a745"
+        font_size = max(7, min(14, h // 20))
+        cue_size  = max(6, font_size - 1)
 
         try:
             start_time = float(self._start_var.get() or 0)
@@ -315,7 +348,7 @@ class AssetInClipView:
             label = f"{int(t)}s" if abs(t - round(t)) < 1e-6 else f"{t:.2f}s"
             c.create_line(LX - 8, y, LX + 5, y, fill=dim, width=1)
             c.create_text(LX - 10, y, text=label, anchor="e",
-                          fill=dim, font=("Helvetica", 7))
+                          fill=dim, font=("Helvetica", font_size))
             t = round(t + inc, 10)
 
         # cue markers — only when lyrics checkbox is on
@@ -328,7 +361,7 @@ class AssetInClipView:
             c.create_line(_CUE_X0, y, _CUE_X1, y, fill="#9b59b6", width=1)
             if text:
                 c.create_text(_CUE_TEXT_X, y, text=text[:22], anchor="w",
-                              fill="#9b59b6", font=("Helvetica", 6))
+                              fill="#9b59b6", font=("Helvetica", cue_size))
 
         # marker arrow at start_time
         st  = max(view_start, min(start_time, view_end))
@@ -336,7 +369,7 @@ class AssetInClipView:
         c.create_polygon(LX, y_a, LX - 12, y_a - 6, LX - 12, y_a + 6,
                          fill=arrow, outline="")
         c.create_text(LX + 7, y_a, text=f"{start_time:.3f}s", anchor="w",
-                      fill=arrow, font=("Helvetica", 7, "bold"))
+                      fill=arrow, font=("Helvetica", font_size, "bold"))
 
     def _on_timeline_click(self, event):
         self._timeline_canvas.focus_set()
