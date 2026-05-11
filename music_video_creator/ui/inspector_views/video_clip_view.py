@@ -1,23 +1,14 @@
 import tkinter as tk
 from tkinter import ttk
 
-try:
-    from PIL import Image, ImageTk
-    _PIL = True
-except ImportError:
-    _PIL = False
-
 from ._helpers import field_label
 
-_TICK_STEPS  = (0.05, 0.1, 0.2, 0.25, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300)
+_TICK_STEPS = (0.05, 0.1, 0.2, 0.25, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300)
 
-_LANE_TOP    = 8
-_LANE_BOT    = 44
-_LABEL_Y     = 57
-_STRIP_H     = 75     # compact height (no lyrics)
-_STRIP_H_LY  = 180    # default height when lyrics are on
-_LYRIC_Y     = 72     # y where cue text rows begin
-_LYRIC_ROW_H = 15     # pixels per cue-text stagger row
+_LANE_TOP = 8
+_LANE_BOT = 44
+_LABEL_Y  = 57
+_STRIP_H  = 75
 
 
 def _nice_tick(total: float, target_count: int = 6) -> float:
@@ -28,52 +19,36 @@ def _nice_tick(total: float, target_count: int = 6) -> float:
     return _TICK_STEPS[-1]
 
 
-def _cue_min_gap(cues: list) -> float:
-    starts = sorted(float(c.get("start", 0.0)) for c in cues)
-    if len(starts) < 2:
-        return 0.0
-    return min(b - a for a, b in zip(starts, starts[1:]) if b > a)
-
-
 class VideoClipView:
     def __init__(self, body: tk.Frame, colors: dict,
                  on_update=None, on_add_assets=None, auto_space_var=None,
                  get_children=None, on_remove_audio_clip=None,
                  get_node=None):
-        self._body                  = body
-        self._colors                = colors
-        self._on_update             = on_update
-        self._on_add_assets         = on_add_assets
-        self._auto_space_var        = auto_space_var or tk.BooleanVar(value=False)
-        self._get_children          = get_children
-        self._on_remove_audio_clip  = on_remove_audio_clip
-        self._get_node              = get_node
-        self._add_btn             = None
-        self._name_var            = tk.StringVar()
-        self._dur_var             = tk.StringVar()
-        self._node                = None
-        self._preview_lbl         = None
-        self._strip_canvas        = None
-        self._playhead_t          = 0.0
-        self._pil_cache           = {}
-        self._audio_clip_frame    = None
-        self._add_ac_btn          = None
-        self._ac_btn_is_remove    = False
-        self._show_lyrics_var     = tk.BooleanVar(value=False)
-        self._lyrics_chk          = None
-        self._cues                = []
-        self._use_full_var        = tk.BooleanVar(value=True)
-        self._ac_start_var        = tk.StringVar(value="0.0")
-        self._ac_end_var          = tk.StringVar(value="0.0")
-        self._ac_start_entry      = None
-        self._ac_end_entry        = None
-        self._ac_file_dur         = 0.0
-        self._ac_t_start          = 0.0   # effective audio-file start offset shown on timeline
-        self._preview_collapsed   = False
-        self._preview_toggle_btn  = None
-        self._strip_h             = _STRIP_H
-        self._strip_resize_y0     = None
-        self._strip_resize_h0     = None
+        self._body                 = body
+        self._colors               = colors
+        self._on_update            = on_update
+        self._on_add_assets        = on_add_assets
+        self._auto_space_var       = auto_space_var or tk.BooleanVar(value=False)
+        self._get_children         = get_children
+        self._on_remove_audio_clip = on_remove_audio_clip
+        self._get_node             = get_node
+        self._add_btn              = None
+        self._name_var             = tk.StringVar()
+        self._dur_var              = tk.StringVar()
+        self._node                 = None
+        self._strip_canvas         = None
+        self._audio_clip_frame     = None
+        self._add_ac_btn           = None
+        self._ac_btn_is_remove     = False
+        self._use_full_var         = tk.BooleanVar(value=True)
+        self._ac_start_var         = tk.StringVar(value="0.0")
+        self._ac_end_var           = tk.StringVar(value="0.0")
+        self._ac_start_entry       = None
+        self._ac_end_entry         = None
+        self._ac_file_dur          = 0.0
+        self._ac_t_start           = 0.0
+        self._strip_resize_y0      = None
+        self._strip_resize_h0      = None
 
     def build(self, node: dict):
         self._node = node
@@ -137,7 +112,6 @@ class VideoClipView:
 
         # ── Auto Spacing ──────────────────────────────────────────
         ttk.Separator(self._body, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=(10, 8))
-
         tk.Checkbutton(self._body,
                        text="Auto-space",
                        variable=self._auto_space_var,
@@ -149,68 +123,28 @@ class VideoClipView:
                        font=("Helvetica", 9),
                        cursor="hand2").pack(anchor="w")
 
-        # ── Clip Preview ──────────────────────────────────────────
+        # ── Clip Timeline ─────────────────────────────────────────
         ttk.Separator(self._body, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=(10, 8))
-
-        hdr = tk.Frame(self._body, bg=bg)
-        hdr.pack(fill=tk.X, pady=(0, 4))
-        tk.Label(hdr, text="Clip Preview", bg=bg,
+        tk.Label(self._body, text="Clip Timeline", bg=bg,
                  fg=self._colors["fg_dim_alt"],
-                 font=("Helvetica", 8)).pack(side=tk.LEFT)
-        self._preview_toggle_btn = tk.Button(
-            hdr, text="▼",
-            command=self._toggle_preview,
-            bg=bg, fg=self._colors["fg_dim_alt"],
-            activebackground=bg, activeforeground=self._colors["fg_primary"],
-            relief=tk.FLAT, bd=0, padx=4, pady=0,
-            font=("Helvetica", 8), cursor="hand2",
-        )
-        self._preview_toggle_btn.pack(side=tk.LEFT, padx=(4, 0))
-        real_node = self._get_node() if self._get_node else node
-        self._show_lyrics_var.set(real_node.get("_show_lyrics", False))
-        self._lyrics_chk = tk.Checkbutton(
-            hdr, text="Show Lyrics",
-            variable=self._show_lyrics_var,
-            bg=bg,
-            fg=self._colors["fg_value"],
-            selectcolor=self._colors.get("bg_dark", "#252525"),
-            activebackground=bg,
-            activeforeground=self._colors["fg_primary"],
-            font=("Helvetica", 8),
-            cursor="hand2",
-            command=self._on_lyrics_toggle,
-        )
-        self._update_lyrics_checkbox()
-
-        self._preview_lbl = tk.Label(self._body, bg=bg)
-        if not self._preview_collapsed:
-            self._preview_lbl.pack(pady=(0, 4))
-
-        # sync strip height with lyrics state
-        self._strip_h = _STRIP_H_LY if self._show_lyrics_var.get() else _STRIP_H
+                 font=("Helvetica", 8)).pack(anchor="w", pady=(0, 4))
 
         self._strip_canvas = tk.Canvas(
             self._body,
             bg=self._colors.get("bg_dark", "#252525"),
-            height=self._strip_h, highlightthickness=1,
+            height=_STRIP_H, highlightthickness=1,
             highlightbackground=self._colors.get("bg_medium", "#2b2b2b"))
         self._strip_canvas.pack(fill=tk.X, pady=(0, 0))
-        c = self._strip_canvas
-        c.bind("<Configure>", lambda _e: self._draw_strip())
-        c.bind("<Button-1>",  self._on_strip_click)
-        c.bind("<B1-Motion>", self._on_strip_drag)
-        c.config(cursor="sb_h_double_arrow")
+        self._strip_canvas.bind("<Configure>", lambda _e: self._draw_strip())
 
-        # drag-resize handle
         handle = tk.Frame(self._body,
                           bg=self._colors.get("bg_medium", "#2b2b2b"),
                           height=6, cursor="sb_v_double_arrow")
-        handle.pack(fill=tk.X, pady=(0, 6))
+        handle.pack(fill=tk.X, pady=(0, 8))
         handle.bind("<Button-1>",  self._on_resize_start)
         handle.bind("<B1-Motion>", self._on_resize_drag)
 
         self._draw_strip()
-        self._update_preview()
 
     # ── Public ────────────────────────────────────────────────────
 
@@ -232,7 +166,6 @@ class VideoClipView:
     def set_add_audio_clip_button_state(self, enabled: bool):
         if not self._add_ac_btn:
             return
-        # Don't override the button when it's acting as a remove ("-") button
         if getattr(self, "_ac_btn_is_remove", False):
             return
         try:
@@ -250,7 +183,6 @@ class VideoClipView:
     def refresh_timeline(self):
         self._refresh_audio_clip_section()
         self._draw_strip()
-        self._update_preview()
 
     def update_duration(self, dur: float):
         self._node["duration"] = dur
@@ -259,7 +191,6 @@ class VideoClipView:
 
     def on_resize(self, width: int):
         self._draw_strip()
-        self._update_preview()
 
     # ── Private ───────────────────────────────────────────────────
 
@@ -288,12 +219,9 @@ class VideoClipView:
                     info = _json.load(f)
                 name = _os.path.splitext(_os.path.basename(path))[0]
                 dur  = float(info.get("duration_seconds", 0.0))
-                self._cues = sorted(info.get("lyrics", {}).get("cues", []),
-                                    key=lambda c: c.get("start", 0.0))
             except Exception:
                 name = _os.path.basename(path)
                 dur  = 0.0
-                self._cues = []
 
             self._ac_file_dur = dur
 
@@ -303,18 +231,16 @@ class VideoClipView:
                      font=("Helvetica", 8, "bold"),
                      anchor="w", wraplength=170).pack(fill=tk.X)
 
-            # Read persisted values (fall back to full-file defaults)
-            use_full  = real_node.get("audio_clip_use_full", True)
+            use_full = real_node.get("audio_clip_use_full", True)
             if use_full is None:
                 use_full = True
-            start_t   = float(real_node.get("audio_clip_start") or 0.0)
-            end_t     = float(real_node.get("audio_clip_end") or dur)
+            start_t  = float(real_node.get("audio_clip_start") or 0.0)
+            end_t    = float(real_node.get("audio_clip_end") or dur)
             self._use_full_var.set(use_full)
             self._ac_start_var.set(f"{start_t:.3f}")
             self._ac_end_var.set(f"{end_t:.3f}")
             self._ac_t_start = 0.0 if use_full else start_t
 
-            # "Use entire audio file" checkbox
             tk.Checkbutton(
                 self._audio_clip_frame,
                 text="Use entire audio file",
@@ -328,7 +254,6 @@ class VideoClipView:
                 cursor="hand2",
             ).pack(anchor="w", pady=(4, 2))
 
-            # Start / End rows
             entry_kw = dict(bg=dark, fg=self._colors["fg_value"],
                             insertbackground=self._colors["fg_primary"],
                             disabledbackground=bg, disabledforeground=dim,
@@ -359,7 +284,6 @@ class VideoClipView:
                     activebackground="#96281b", activeforeground="white",
                     cursor="hand2")
         else:
-            self._cues        = []
             self._ac_file_dur = 0.0
             self._ac_t_start  = 0.0
             tk.Label(self._audio_clip_frame,
@@ -373,55 +297,6 @@ class VideoClipView:
                     bg="#555555", fg="#999",
                     activebackground="#555555", activeforeground="#999",
                     cursor="")
-        self._update_lyrics_checkbox()
-
-    def _on_lyrics_toggle(self):
-        val = self._show_lyrics_var.get()
-        real_node = self._get_node() if self._get_node else self._node
-        if real_node is not None:
-            real_node["_show_lyrics"] = val
-        new_h = _STRIP_H_LY if val else _STRIP_H
-        self._strip_h = new_h
-        if self._strip_canvas:
-            try:
-                self._strip_canvas.config(height=new_h)
-            except tk.TclError:
-                pass
-        self._draw_strip()
-
-    def _toggle_preview(self):
-        self._preview_collapsed = not self._preview_collapsed
-        if self._preview_toggle_btn:
-            try:
-                self._preview_toggle_btn.config(
-                    text="▶" if self._preview_collapsed else "▼")
-            except tk.TclError:
-                pass
-        if self._preview_lbl:
-            try:
-                if self._preview_collapsed:
-                    self._preview_lbl.pack_forget()
-                else:
-                    self._preview_lbl.pack(before=self._strip_canvas, pady=(0, 4))
-                    self._update_preview()
-            except tk.TclError:
-                pass
-
-    def _on_resize_start(self, event):
-        self._strip_resize_y0 = event.y_root
-        self._strip_resize_h0 = self._strip_canvas.winfo_height() if self._strip_canvas else _STRIP_H
-
-    def _on_resize_drag(self, event):
-        if self._strip_resize_y0 is None or not self._strip_canvas:
-            return
-        delta = event.y_root - self._strip_resize_y0
-        new_h = max(60, min(500, self._strip_resize_h0 + delta))
-        self._strip_h = int(new_h)
-        try:
-            self._strip_canvas.config(height=self._strip_h)
-        except tk.TclError:
-            pass
-        self._draw_strip()
 
     def _on_use_full_toggle(self):
         use_full  = self._use_full_var.get()
@@ -475,21 +350,11 @@ class VideoClipView:
         self._ac_end_var.set(f"{end:.3f}")
         self._dur_var.set(str(round(max(0.0, end - start), 3)))
 
-    def _update_lyrics_checkbox(self):
-        if not self._lyrics_chk:
-            return
-        if self._cues:
-            self._lyrics_chk.pack(side=tk.RIGHT)
-        else:
-            self._lyrics_chk.pack_forget()
-            self._show_lyrics_var.set(False)
-
     def _do_remove_audio_clip(self):
         if self._on_remove_audio_clip:
             self._on_remove_audio_clip()
         self._refresh_audio_clip_section()
         self._draw_strip()
-        self._update_preview()
 
     def _do_add_assets(self):
         if self._on_add_assets:
@@ -514,26 +379,20 @@ class VideoClipView:
             self._on_update(self._node.get("name") or "Video Clip", dur)
         self._draw_strip()
 
-    def _on_strip_click(self, event):
-        self._set_playhead_from_x(event.x)
+    def _on_resize_start(self, event):
+        self._strip_resize_y0 = event.y_root
+        self._strip_resize_h0 = self._strip_canvas.winfo_height() if self._strip_canvas else _STRIP_H
 
-    def _on_strip_drag(self, event):
-        self._set_playhead_from_x(event.x)
-
-    def _set_playhead_from_x(self, x: int):
-        dur = self._node.get("duration") or 0.0
-        if dur <= 0:
+    def _on_resize_drag(self, event):
+        if self._strip_resize_y0 is None or not self._strip_canvas:
             return
-        c = self._strip_canvas
-        if not c:
-            return
-        w = c.winfo_width()
-        if w <= 4:
-            return
-        t = (x - 2) / ((w - 4) / dur)
-        self._playhead_t = max(0.0, min(t, dur))
+        delta = event.y_root - self._strip_resize_y0
+        new_h = max(50, min(400, self._strip_resize_h0 + delta))
+        try:
+            self._strip_canvas.config(height=int(new_h))
+        except tk.TclError:
+            pass
         self._draw_strip()
-        self._update_preview()
 
     def _draw_strip(self):
         c = self._strip_canvas
@@ -553,13 +412,11 @@ class VideoClipView:
 
         if dur <= 0:
             c.create_text(w // 2, h // 2,
-                          text="Set clip duration to enable preview",
+                          text="Set clip duration to enable timeline",
                           fill=dim, font=("Helvetica", 8))
             return
 
-        children     = self._get_children() if self._get_children else []
-        cues         = self._cues
-        show_lyrics  = self._show_lyrics_var.get() and bool(cues)
+        children    = self._get_children() if self._get_children else []
         direct_audio = [n for n in children if n.get("type") == "audio"]
         direct_imgs  = sorted([n for n in children if n.get("type") == "image"],
                               key=lambda n: n.get("start_time") or 0.0)
@@ -575,7 +432,6 @@ class VideoClipView:
                 c.create_text((x0 + x1) / 2, y_mid, text=lbl,
                               fill="white", font=("Helvetica", 7), anchor="center")
 
-        # ── Direct audio bars (blue) ──────────────────────────────
         for n in direct_audio:
             t0 = float(n.get("start_time") or 0.0)
             t1 = t0 + float(n.get("_audio_dur") or 0.0)
@@ -584,41 +440,16 @@ class VideoClipView:
             c.create_rectangle(x0, _LANE_TOP, x1, _LANE_BOT, fill="#4a90d9", outline="")
             _bar_label(x0, x1, (_LANE_TOP + _LANE_BOT) / 2, n.get("name") or "audio")
 
-        # ── Image bars (green) ────────────────────────────────────
         for i, n in enumerate(direct_imgs):
             t0 = float(n.get("start_time") or 0.0)
             t1 = float(direct_imgs[i + 1].get("start_time") or 0.0) if i + 1 < len(direct_imgs) else dur
-            if t1 is None:
-                t1 = dur
             x0 = 2 + t0 * px_per_s
             x1 = max(x0 + 3, 2 + t1 * px_per_s)
             c.create_rectangle(x0, _LANE_TOP, x1, _LANE_BOT, fill="#5cb85c", outline="")
             _bar_label(x0, x1, (_LANE_TOP + _LANE_BOT) / 2, n.get("name") or "img")
 
-        # ── Cue marker lines (drawn after bars so they appear on top) ─
-        if show_lyrics:
-            for cue in cues:
-                t_abs = float(cue.get("start", 0.0))
-                t_rel = t_abs - ac_start
-                if t_rel < -1e-9 or t_rel > dur + 1e-9:
-                    continue
-                x = 2 + t_rel * px_per_s
-                c.create_line(x, _LANE_TOP, x, _LABEL_Y + 4,
-                              fill="#9b59b6", dash=(3, 3), width=1)
-
-        # ── Time ticks (min interval ≥ min cue gap when lyrics on) ──
         inc = _nice_tick(dur)
-        if show_lyrics:
-            min_gap = _cue_min_gap(cues)
-            if min_gap > 0 and inc < min_gap:
-                for step in _TICK_STEPS:
-                    if step >= min_gap:
-                        inc = step
-                        break
-                else:
-                    inc = _TICK_STEPS[-1]
-
-        t = 0.0
+        t   = 0.0
         while t <= dur + 1e-9:
             x     = 2 + t * px_per_s
             t_abs = ac_start + t
@@ -627,70 +458,3 @@ class VideoClipView:
             c.create_text(x, _LABEL_Y, text=label, anchor="n",
                           fill=dim, font=("Helvetica", 7))
             t = round(t + inc, 10)
-
-        # ── Cue text rows (staggered, multi-row) ─────────────────
-        if show_lyrics and h > _LYRIC_Y + _LYRIC_ROW_H:
-            avail_rows = max(1, (h - _LYRIC_Y) // _LYRIC_ROW_H)
-            visible = [(float(cue.get("start", 0.0)) - ac_start, (cue.get("text") or "").strip())
-                       for cue in cues
-                       if (cue.get("text") or "").strip()
-                       and -1e-9 <= float(cue.get("start", 0.0)) - ac_start <= dur + 1e-9]
-            for idx, (t_rel, text) in enumerate(visible):
-                x   = 2 + t_rel * px_per_s
-                row = idx % avail_rows
-                y   = _LYRIC_Y + row * _LYRIC_ROW_H
-                c.create_text(x + 3, y, text=text[:28], anchor="nw",
-                              fill="#b87fe0", font=("Helvetica", 8))
-
-        # ── Playhead ──────────────────────────────────────────────
-        px = 2 + self._playhead_t * px_per_s
-        c.create_polygon(px - 5, 0, px + 5, 0, px, 8, fill="white", outline="")
-        c.create_line(px, 0, px, _LANE_BOT + 2, fill="white", width=2)
-
-    def _update_preview(self):
-        lbl = self._preview_lbl
-        if not lbl:
-            return
-
-        if not _PIL:
-            lbl.config(image="", text="PIL not available",
-                       fg=self._colors["fg_dim"], font=("Helvetica", 8))
-            return
-
-        children = self._get_children() if self._get_children else []
-        images   = sorted(
-            [n for n in children if n.get("type") == "image"],
-            key=lambda n: n.get("start_time") or 0.0,
-        )
-
-        active_path = None
-        for n in reversed(images):
-            if (n.get("start_time") or 0.0) <= self._playhead_t + 1e-9:
-                active_path = n.get("path")
-                break
-
-        if not active_path:
-            lbl.config(image="", text="No image at this position",
-                       fg=self._colors["fg_dim"], font=("Helvetica", 8))
-            lbl._photo = None
-            return
-
-        if active_path not in self._pil_cache:
-            try:
-                self._pil_cache[active_path] = Image.open(active_path)
-            except Exception:
-                self._pil_cache[active_path] = None
-
-        pil_img = self._pil_cache.get(active_path)
-        if not pil_img:
-            lbl.config(image="", text="Cannot load image",
-                       fg=self._colors["fg_dim"], font=("Helvetica", 8))
-            lbl._photo = None
-            return
-
-        w     = max(60, self._body.winfo_width() - 20)
-        thumb = pil_img.copy()
-        thumb.thumbnail((w, 200))
-        photo = ImageTk.PhotoImage(thumb)
-        lbl.config(image=photo, text="")
-        lbl._photo = photo

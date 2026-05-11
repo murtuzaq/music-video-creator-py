@@ -33,13 +33,16 @@ _CUE_TEXT_X  = LX + 16
 class AssetInClipView:
     def __init__(self, body: tk.Frame, colors: dict,
                  on_update=None, on_reorder=None, on_manual_adjust=None,
-                 cues=None):
+                 cues=None, show_lyrics=False, on_toggle_lyrics=None):
         self._body              = body
         self._colors            = colors
         self._on_update         = on_update
         self._on_reorder        = on_reorder
         self._on_manual_adjust  = on_manual_adjust
         self._cues              = cues or []
+        self._show_lyrics_var   = tk.BooleanVar(value=show_lyrics and bool(cues))
+        self._on_toggle_lyrics  = on_toggle_lyrics
+        self._lyrics_chk        = None
         self._up_btn          = None
         self._down_btn        = None
         self._pil_src         = None
@@ -105,6 +108,18 @@ class AssetInClipView:
         tk.Label(hdr, text="Timeline  (↑↓ to move)", bg=bg,
                  fg=self._colors["fg_dim_alt"],
                  font=("Helvetica", 8)).pack(side=tk.LEFT)
+        if self._cues:
+            self._lyrics_chk = tk.Checkbutton(
+                hdr, text="Lyrics",
+                variable=self._show_lyrics_var,
+                command=self._on_lyrics_toggle_click,
+                bg=bg, fg=self._colors["fg_value"],
+                selectcolor=self._colors.get("bg_dark", "#252525"),
+                activebackground=bg,
+                activeforeground=self._colors["fg_primary"],
+                font=("Helvetica", 8), cursor="hand2",
+            )
+            self._lyrics_chk.pack(side=tk.LEFT, padx=(8, 0))
         tk.Button(hdr, text="+", command=self._zoom_in,
                   bg=self._colors.get("bg_dark", "#252525"),
                   fg=self._colors["fg_value"],
@@ -153,6 +168,12 @@ class AssetInClipView:
         self._refresh_preview()
 
     # ── Private ───────────────────────────────────────────────────
+
+    def _on_lyrics_toggle_click(self):
+        val = self._show_lyrics_var.get()
+        if self._on_toggle_lyrics:
+            self._on_toggle_lyrics(val)
+        self._draw_timeline()
 
     def _do_reorder(self, direction: int):
         if self._on_reorder:
@@ -249,8 +270,8 @@ class AssetInClipView:
                           fill=dim, font=("Helvetica", 7))
             t = round(t + inc, 10)
 
-        # cue markers (right of spine)
-        for cue in self._cues:
+        # cue markers (right of spine) — only when lyrics checkbox is on
+        for cue in (self._cues if self._show_lyrics_var.get() else []):
             t = float(cue.get("start", 0.0))
             if t < view_start - 1e-9 or t > view_end + 1e-9:
                 continue

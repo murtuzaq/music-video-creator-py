@@ -43,6 +43,8 @@ class InspectorPanel:
         self._project_total_duration   = 0.0
         self._parent_duration          = 0.0
         self._asset_in_clip_cues       = []
+        self._asset_in_clip_show_lyr   = False
+        self._asset_in_clip_toggle_lyr = None
         self._colors                   = dict(_DARK)
 
         self.frame = tk.Frame(parent, bg="#1e1e1e")
@@ -121,7 +123,9 @@ class InspectorPanel:
             self.show_asset_in_clip(self._current_node, self._on_update,
                                     self._parent_duration, self._on_reorder,
                                     self._on_manual_adjust,
-                                    cues=self._asset_in_clip_cues)
+                                    cues=self._asset_in_clip_cues,
+                                    show_lyrics=self._asset_in_clip_show_lyr,
+                                    on_toggle_lyrics=self._asset_in_clip_toggle_lyr)
         elif self._current_type == "audio_clip":
             self.show_audio_clip(self._current_node, self._on_update,
                                  self._on_add_images, self._parent_duration,
@@ -196,17 +200,22 @@ class InspectorPanel:
 
     def show_asset_in_clip(self, node: dict, on_update=None,
                            parent_duration: float = 0.0, on_reorder=None,
-                           on_manual_adjust=None, cues=None):
-        self._current_type       = "asset_in_clip"
-        self._current_node       = node
-        self._on_update          = on_update
-        self._on_reorder         = on_reorder
-        self._on_manual_adjust   = on_manual_adjust
-        self._parent_duration    = parent_duration
-        self._asset_in_clip_cues = cues or []
+                           on_manual_adjust=None, cues=None,
+                           show_lyrics=False, on_toggle_lyrics=None):
+        self._current_type            = "asset_in_clip"
+        self._current_node            = node
+        self._on_update               = on_update
+        self._on_reorder              = on_reorder
+        self._on_manual_adjust        = on_manual_adjust
+        self._parent_duration         = parent_duration
+        self._asset_in_clip_cues      = cues or []
+        self._asset_in_clip_show_lyr  = show_lyrics
+        self._asset_in_clip_toggle_lyr = on_toggle_lyrics
         self._clear()
         view = AssetInClipView(self._body, self._colors, on_update, on_reorder,
-                               on_manual_adjust, cues=self._asset_in_clip_cues)
+                               on_manual_adjust, cues=self._asset_in_clip_cues,
+                               show_lyrics=show_lyrics,
+                               on_toggle_lyrics=on_toggle_lyrics)
         view.build(node, parent_duration)
         self._current_view = view
 
@@ -268,6 +277,8 @@ class InspectorPanel:
         self._project_total_duration   = 0.0
         self._parent_duration          = 0.0
         self._asset_in_clip_cues       = []
+        self._asset_in_clip_show_lyr   = False
+        self._asset_in_clip_toggle_lyr = None
         self._show_empty()
 
     # ─────────────────────────────────────────────────────────────

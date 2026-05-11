@@ -162,28 +162,7 @@ class MusicVideoCreator(tk.Tk):
             parent_id       = node.get("parent_id")
             parent_node     = self.project_panel.get_node(parent_id)
             parent_duration = parent_node.get("duration") or 0.0
-            cues = []
-            if parent_node.get("_show_lyrics"):
-                import json as _json, os as _os
-                ac_path = parent_node.get("audio_clip_path", "")
-                if ac_path and _os.path.isfile(ac_path):
-                    try:
-                        with open(ac_path, "r", encoding="utf-8") as _f:
-                            _info = _json.load(_f)
-                        use_full = parent_node.get("audio_clip_use_full", True)
-                        ac_start = 0.0 if use_full else float(parent_node.get("audio_clip_start") or 0.0)
-                        raw_cues = sorted(
-                            _info.get("lyrics", {}).get("cues", []),
-                            key=lambda c: c.get("start", 0.0),
-                        )
-                        cues = [
-                            {**cue, "start": float(cue.get("start", 0.0)) - ac_start}
-                            for cue in raw_cues
-                            if float(cue.get("start", 0.0)) - ac_start >= -1e-9
-                               and float(cue.get("start", 0.0)) - ac_start <= parent_duration + 1e-9
-                        ]
-                    except Exception:
-                        cues = []
+            cues = self._load_cues_for_clip(parent_node, parent_duration)
             self.inspector_panel.show_asset_in_clip(
                 node,
                 on_update=lambda st, iid=item_id: self.project_panel.update_node(
@@ -193,6 +172,8 @@ class MusicVideoCreator(tk.Tk):
                 on_reorder=self._reorder_asset_in_clip,
                 on_manual_adjust=self._on_asset_manual_adjust,
                 cues=cues,
+                show_lyrics=parent_node.get("_show_lyrics", False),
+                on_toggle_lyrics=lambda val, pid=parent_id: self._on_toggle_lyrics(pid, val),
             )
             self._update_reorder_buttons()
         elif node_type == "video":
@@ -332,6 +313,29 @@ class MusicVideoCreator(tk.Tk):
 
     def _refresh_clip_preview(self):
         self.inspector_panel.refresh_clip_timeline()
+
+    def _load_cues_for_clip(self, clip_node: dict, clip_duration: float) -> list:
+        import json as _json, os as _os
+        ac_path = clip_node.get("audio_clip_path", "")
+        if not ac_path or not _os.path.isfile(ac_path):
+            return []
+        try:
+            with open(ac_path, "r", encoding="utf-8") as _f:
+                _info = _json.load(_f)
+            use_full = clip_node.get("audio_clip_use_full", True)
+            ac_start = 0.0 if use_full else float(clip_node.get("audio_clip_start") or 0.0)
+            raw = sorted(_info.get("lyrics", {}).get("cues", []),
+                         key=lambda c: c.get("start", 0.0))
+            return [
+                {**cue, "start": float(cue.get("start", 0.0)) - ac_start}
+                for cue in raw
+                if -1e-9 <= float(cue.get("start", 0.0)) - ac_start <= clip_duration + 1e-9
+            ]
+        except Exception:
+            return []
+
+    def _on_toggle_lyrics(self, parent_id: str, val: bool):
+        self.project_panel.get_node(parent_id)["_show_lyrics"] = val
 
     def _reorder_asset_in_clip(self, direction: int):
         if not self._current_asset_id:
