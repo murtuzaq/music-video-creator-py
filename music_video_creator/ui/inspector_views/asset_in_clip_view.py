@@ -25,14 +25,21 @@ def _nice_tick(view_dur: float) -> float:
     return _TICK_STEPS[-1]
 
 
+_CUE_X0      = LX + 4
+_CUE_X1      = LX + 14
+_CUE_TEXT_X  = LX + 16
+
+
 class AssetInClipView:
     def __init__(self, body: tk.Frame, colors: dict,
-                 on_update=None, on_reorder=None, on_manual_adjust=None):
+                 on_update=None, on_reorder=None, on_manual_adjust=None,
+                 cues=None):
         self._body              = body
         self._colors            = colors
         self._on_update         = on_update
         self._on_reorder        = on_reorder
         self._on_manual_adjust  = on_manual_adjust
+        self._cues              = cues or []
         self._up_btn          = None
         self._down_btn        = None
         self._pil_src         = None
@@ -241,6 +248,18 @@ class AssetInClipView:
             c.create_text(LX - 10, y, text=label, anchor="e",
                           fill=dim, font=("Helvetica", 7))
             t = round(t + inc, 10)
+
+        # cue markers (right of spine)
+        for cue in self._cues:
+            t = float(cue.get("start", 0.0))
+            if t < view_start - 1e-9 or t > view_end + 1e-9:
+                continue
+            y    = M_TOP + (t - view_start) * px_per_s
+            text = (cue.get("text") or "").strip()
+            c.create_line(_CUE_X0, y, _CUE_X1, y, fill="#9b59b6", width=1)
+            if text:
+                c.create_text(_CUE_TEXT_X, y, text=text[:22], anchor="w",
+                              fill="#9b59b6", font=("Helvetica", 6))
 
         # marker arrow at start_time
         st  = max(view_start, min(start_time, view_end))

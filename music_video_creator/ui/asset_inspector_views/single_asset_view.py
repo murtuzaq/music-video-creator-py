@@ -1,3 +1,4 @@
+import json
 import os
 import tkinter as tk
 
@@ -32,6 +33,8 @@ class SingleAssetView:
             self._build_image(path)
         elif ntype == "audio":
             self._build_audio(path)
+        elif ntype == "audio_clip":
+            self._build_audio_clip(path)
 
     def on_resize(self, _width: int):
         self._refresh_preview()
@@ -53,6 +56,27 @@ class SingleAssetView:
         self._info_row("Name", os.path.basename(path))
         self._info_row("Size", _fmt_size(path))
         self._info_row("Type", os.path.splitext(path)[1].upper().lstrip("."))
+
+    def _build_audio_clip(self, path: str):
+        bg = self._colors["bg_darkest"]
+        tk.Label(self._body, text="🎵", bg=bg, fg="#8e44ad",
+                 font=("Helvetica", 36)).pack(pady=(14, 6))
+        self._info_row("File", os.path.basename(path))
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                info = json.load(f)
+        except Exception:
+            info = {}
+        audio_path = info.get("audio_path", "")
+        duration   = info.get("duration_seconds", 0.0)
+        cues       = info.get("lyrics", {}).get("cues", [])
+        self._info_row("Audio", audio_path or "—")
+        if duration:
+            mins = int(duration // 60)
+            secs = duration % 60
+            self._info_row("Duration", f"{mins}:{secs:05.2f}")
+        if cues:
+            self._info_row("Cues", str(len(cues)))
 
     def _build_audio(self, path: str):
         bg = self._colors["bg_darkest"]

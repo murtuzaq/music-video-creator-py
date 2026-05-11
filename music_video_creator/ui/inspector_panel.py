@@ -37,11 +37,13 @@ class InspectorPanel:
         self._generating             = False
         self._generate_fraction      = 0.0
         self._generate_message       = ""
-        self._auto_space_var         = None
-        self._get_children           = None
-        self._project_total_duration = 0.0
-        self._parent_duration        = 0.0
-        self._colors                 = dict(_DARK)
+        self._auto_space_var           = None
+        self._get_children             = None
+        self._get_clip_node            = None
+        self._project_total_duration   = 0.0
+        self._parent_duration          = 0.0
+        self._asset_in_clip_cues       = []
+        self._colors                   = dict(_DARK)
 
         self.frame = tk.Frame(parent, bg="#1e1e1e")
         self.frame.pack(fill=tk.BOTH, expand=True)
@@ -113,11 +115,13 @@ class InspectorPanel:
         elif self._current_type == "video_clip":
             self.show_video_clip(self._current_node, self._on_update,
                                  self._on_add_assets, self._auto_space_var,
-                                 self._get_children, self._on_remove_audio_clip)
+                                 self._get_children, self._on_remove_audio_clip,
+                                 self._get_clip_node)
         elif self._current_type == "asset_in_clip":
             self.show_asset_in_clip(self._current_node, self._on_update,
                                     self._parent_duration, self._on_reorder,
-                                    self._on_manual_adjust)
+                                    self._on_manual_adjust,
+                                    cues=self._asset_in_clip_cues)
         elif self._current_type == "audio_clip":
             self.show_audio_clip(self._current_node, self._on_update,
                                  self._on_add_images, self._parent_duration,
@@ -169,17 +173,20 @@ class InspectorPanel:
 
     def show_video_clip(self, node: dict, on_update=None,
                         on_add_assets=None, auto_space_var=None,
-                        get_children=None, on_remove_audio_clip=None):
-        self._current_type           = "video_clip"
-        self._current_node           = node
-        self._on_update              = on_update
-        self._on_add_assets          = on_add_assets
-        self._on_remove_audio_clip   = on_remove_audio_clip
-        self._auto_space_var         = auto_space_var
-        self._get_children           = get_children
+                        get_children=None, on_remove_audio_clip=None,
+                        get_node=None):
+        self._current_type             = "video_clip"
+        self._current_node             = node
+        self._on_update                = on_update
+        self._on_add_assets            = on_add_assets
+        self._on_remove_audio_clip     = on_remove_audio_clip
+        self._auto_space_var           = auto_space_var
+        self._get_children             = get_children
+        self._get_clip_node            = get_node
         self._clear()
         view = VideoClipView(self._body, self._colors, on_update, on_add_assets,
-                             auto_space_var, get_children, on_remove_audio_clip)
+                             auto_space_var, get_children, on_remove_audio_clip,
+                             get_node)
         view.build(node)
         self._current_view = view
 
@@ -189,15 +196,17 @@ class InspectorPanel:
 
     def show_asset_in_clip(self, node: dict, on_update=None,
                            parent_duration: float = 0.0, on_reorder=None,
-                           on_manual_adjust=None):
-        self._current_type     = "asset_in_clip"
-        self._current_node     = node
-        self._on_update        = on_update
-        self._on_reorder       = on_reorder
-        self._on_manual_adjust = on_manual_adjust
-        self._parent_duration  = parent_duration
+                           on_manual_adjust=None, cues=None):
+        self._current_type       = "asset_in_clip"
+        self._current_node       = node
+        self._on_update          = on_update
+        self._on_reorder         = on_reorder
+        self._on_manual_adjust   = on_manual_adjust
+        self._parent_duration    = parent_duration
+        self._asset_in_clip_cues = cues or []
         self._clear()
-        view = AssetInClipView(self._body, self._colors, on_update, on_reorder, on_manual_adjust)
+        view = AssetInClipView(self._body, self._colors, on_update, on_reorder,
+                               on_manual_adjust, cues=self._asset_in_clip_cues)
         view.build(node, parent_duration)
         self._current_view = view
 
@@ -253,10 +262,12 @@ class InspectorPanel:
         self._generating             = False
         self._generate_fraction      = 0.0
         self._generate_message       = ""
-        self._auto_space_var         = None
-        self._get_children           = None
-        self._project_total_duration = 0.0
-        self._parent_duration        = 0.0
+        self._auto_space_var           = None
+        self._get_children             = None
+        self._get_clip_node            = None
+        self._project_total_duration   = 0.0
+        self._parent_duration          = 0.0
+        self._asset_in_clip_cues       = []
         self._show_empty()
 
     # ─────────────────────────────────────────────────────────────

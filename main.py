@@ -162,6 +162,20 @@ class MusicVideoCreator(tk.Tk):
             parent_id       = node.get("parent_id")
             parent_node     = self.project_panel.get_node(parent_id)
             parent_duration = parent_node.get("duration") or 0.0
+            cues = []
+            if parent_node.get("_show_lyrics"):
+                import json as _json, os as _os
+                ac_path = parent_node.get("audio_clip_path", "")
+                if ac_path and _os.path.isfile(ac_path):
+                    try:
+                        with open(ac_path, "r", encoding="utf-8") as _f:
+                            _info = _json.load(_f)
+                        cues = sorted(
+                            _info.get("lyrics", {}).get("cues", []),
+                            key=lambda c: c.get("start", 0.0),
+                        )
+                    except Exception:
+                        cues = []
             self.inspector_panel.show_asset_in_clip(
                 node,
                 on_update=lambda st, iid=item_id: self.project_panel.update_node(
@@ -170,6 +184,7 @@ class MusicVideoCreator(tk.Tk):
                 parent_duration=parent_duration,
                 on_reorder=self._reorder_asset_in_clip,
                 on_manual_adjust=self._on_asset_manual_adjust,
+                cues=cues,
             )
             self._update_reorder_buttons()
         elif node_type == "video":
@@ -189,26 +204,6 @@ class MusicVideoCreator(tk.Tk):
                 generate_fraction=gen["fraction"] if is_gen else 0.0,
                 generate_message=gen["message"] if is_gen else "",
             )
-        elif node_type == "audio_clip":
-            self._current_clip_id        = None
-            self._current_asset_id       = item_id
-            self._current_asset_clip_id  = node.get("parent_id")
-            parent_id       = node.get("parent_id")
-            parent_node     = self.project_panel.get_node(parent_id)
-            parent_duration = parent_node.get("duration") or 0.0
-            self.inspector_panel.show_audio_clip(
-                node,
-                on_update=lambda st, iid=item_id: self.project_panel.update_node(
-                    iid, start_time=st
-                ),
-                on_add_images=self._add_images_to_audio_clip,
-                parent_duration=parent_duration,
-                on_reorder=self._reorder_asset_in_clip,
-                on_manual_adjust=self._on_asset_manual_adjust,
-                get_children=lambda iid=item_id: self.project_panel.get_children(iid),
-            )
-            self._update_reorder_buttons()
-            self._on_asset_selection_change()
         elif node_type == "video_clip":
             same_clip = (item_id == self._current_clip_id or
                          item_id == self._current_asset_clip_id)
@@ -224,14 +219,15 @@ class MusicVideoCreator(tk.Tk):
                 auto_space_var=self._auto_space_enabled,
                 get_children=lambda iid=item_id: self._get_clip_preview_children(iid),
                 on_remove_audio_clip=self._remove_audio_clip_from_clip,
+                get_node=lambda iid=item_id: self.project_panel.get_node(iid),
             )
             self._on_asset_selection_change()
 
     def _on_asset_selection_change(self):
         assets = self.asset_panel.get_selected_assets()
-        has_ac  = any(a.get("type") == "audio_clip" for a in assets)
-        has_any = len(assets) > 0
-        self.inspector_panel.set_add_button_state(has_any)
+        has_ac    = any(a.get("type") == "audio_clip" for a in assets)
+        has_image = any(a.get("type") == "image" for a in assets)
+        self.inspector_panel.set_add_button_state(has_image)
         self.inspector_panel.set_add_audio_clip_button_state(has_ac)
         if len(assets) == 1:
             self.asset_inspector_panel.show_asset(assets[0])
@@ -240,53 +236,42 @@ class MusicVideoCreator(tk.Tk):
         else:
             self.asset_inspector_panel.clear()
 
-    def _get_clip_audio_clip(self, clip_id: str):
-        """Return (item_id, node) for the audio_clip child, or (None, None)."""
-        for iid, n in self.project_panel.get_children(clip_id):
-            if n.get("type") == "audio_clip":
-                return iid, n
-        return None, None
-
     def _sync_clip_duration_from_audio_clip(self, clip_id: str):
-        _, ac_node = self._get_clip_audio_clip(clip_id)
-        if not ac_node:
+        import json as _json
+        node = self.project_panel.get_node(clip_id)
+        path = node.get("audio_clip_path", "")
+        if not path:
             return
-        dur = float(ac_node.get("duration") or 0.0)
-        self.project_panel.update_node(clip_id, duration=dur)
-        if self._current_clip_id == clip_id:
-            self.inspector_panel.update_clip_duration(dur)
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                info = _json.load(f)
+            dur = float(info.get("duration_seconds", 0.0))
+        except Exception:
+            return
+        if dur > 0:
+            self.project_panel.update_node(clip_id, duration=dur)
+            if self._current_clip_id == clip_id:
+                self.inspector_panel.update_clip_duration(dur)
 
     def _remove_audio_clip_from_clip(self):
         if not self._current_clip_id:
             return
-        ac_id, _ = self._get_clip_audio_clip(self._current_clip_id)
-        if ac_id:
-            self.project_panel.remove_child(ac_id)
-            self._refresh_clip_preview()
+        self.project_panel.get_node(self._current_clip_id).pop("audio_clip_path", None)
+        self._refresh_clip_preview()
 
     def _add_assets_to_clip(self):
         if not self._current_clip_id:
             return
         for asset in self.asset_panel.get_selected_assets():
-            if asset.get("type") == "audio_clip":
-                # Enforce one audio_clip max — replace existing if present
-                existing_id, _ = self._get_clip_audio_clip(self._current_clip_id)
-                if existing_id:
-                    self.project_panel.remove_child(existing_id)
-                self.project_panel.add_asset_to_clip(self._current_clip_id, asset)
+            atype = asset.get("type")
+            if atype == "audio_clip":
+                self.project_panel.get_node(self._current_clip_id)["audio_clip_path"] = asset["path"]
                 self._sync_clip_duration_from_audio_clip(self._current_clip_id)
-            else:
+            elif atype == "image":
                 self.project_panel.add_asset_to_clip(self._current_clip_id, asset)
         if self._auto_space_enabled.get():
             self._auto_space_clip()
         self._refresh_clip_preview()
-
-    def _add_images_to_audio_clip(self):
-        if not self._current_asset_id:
-            return
-        for asset in self.asset_panel.get_selected_assets():
-            if asset.get("type") == "image":
-                self.project_panel.add_asset_to_clip(self._current_asset_id, asset)
 
     def _on_clip_update(self, clip_id: str, name: str, dur: float):
         self.project_panel.update_node(clip_id, name=name, duration=dur)
@@ -295,20 +280,11 @@ class MusicVideoCreator(tk.Tk):
             self._refresh_clip_preview()
 
     def _get_clip_preview_children(self, clip_id: str) -> list:
-        import json as _json
         result = []
         for _, n in self.project_panel.get_children(clip_id):
             node = dict(n)
-            ntype = node.get("type")
-            if ntype == "audio":
+            if node.get("type") == "audio":
                 node["_audio_dur"] = _audio_file_duration(node.get("path"))
-            elif ntype == "audio_clip":
-                try:
-                    with open(n.get("path"), "r", encoding="utf-8") as f:
-                        info = _json.load(f)
-                    node["_cues"] = info.get("lyrics", {}).get("cues", [])
-                except Exception:
-                    node["_cues"] = []
             result.append(node)
         return result
 
@@ -327,14 +303,11 @@ class MusicVideoCreator(tk.Tk):
             _audio_file_duration(n.get("path"))
             for _, n in children if n.get("type") == "audio"
         )
-        # audio_clip defines the clip duration — it doesn't consume a sequential slot
         image_slot = (clip_dur - audio_total) / num_images if num_images > 0 else 0.0
 
         current_time = 0.0
         for iid, n in children:
             ntype = n.get("type")
-            if ntype == "audio_clip":
-                continue  # plays throughout; not positioned sequentially
             self.project_panel.update_node(iid, start_time=round(current_time, 3))
             if ntype == "audio":
                 current_time += _audio_file_duration(n.get("path"))

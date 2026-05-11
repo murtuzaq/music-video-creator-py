@@ -69,11 +69,6 @@ def _build_clip(clip_data: dict, resolution: tuple, fps: int):
         [c for c in children if c.get("type") == "audio"],
         key=lambda c: c.get("start_time") or 0.0,
     )
-    audio_clip_nodes = sorted(
-        [c for c in children if c.get("type") == "audio_clip"],
-        key=lambda c: c.get("start_time") or 0.0,
-    )
-
     base = ColorClip(size=resolution, color=(0, 0, 0), duration=duration).with_fps(fps)
     layers = [base]
 
@@ -113,58 +108,19 @@ def _build_clip(clip_data: dict, resolution: tuple, fps: int):
         except Exception:
             pass
 
-    # audio_clip nodes: load audio from .info, add child images as slideshow
-    for ac_node in audio_clip_nodes:
-        ac_start = float(ac_node.get("start_time") or 0.0)
-        ac_dur   = float(ac_node.get("duration") or 0.0)
-        if ac_start >= duration or ac_dur <= 0:
-            continue
-
-        info_path  = ac_node.get("path")
-        audio_path = None
-        if info_path:
-            try:
-                with open(info_path, "r", encoding="utf-8") as f:
-                    info = json.load(f)
-                audio_path = info.get("audio_path")
-            except Exception:
-                pass
-
-        if audio_path and os.path.exists(audio_path):
-            try:
+    # audio_clip_path property — plays full duration from t=0
+    ac_path = clip_data.get("audio_clip_path", "")
+    if ac_path and os.path.isfile(ac_path):
+        try:
+            with open(ac_path, "r", encoding="utf-8") as f:
+                info = json.load(f)
+            audio_path = info.get("audio_path", "")
+            if audio_path and os.path.exists(audio_path):
                 ac = AudioFileClip(audio_path)
-                ac = ac.subclipped(0, min(ac.duration, ac_dur, duration - ac_start))
-                ac = ac.with_start(ac_start)
+                ac = ac.subclipped(0, min(ac.duration, duration))
                 audio_clips.append(ac)
-            except Exception:
-                pass
-
-        ac_images = sorted(
-            [c for c in ac_node.get("children", []) if c.get("type") == "image"],
-            key=lambda c: c.get("start_time") or 0.0,
-        )
-        for j, img_data in enumerate(ac_images):
-            path = img_data.get("path")
-            if not path or not os.path.exists(path):
-                continue
-            rel_start = float(img_data.get("start_time") or 0.0)
-            t_start   = ac_start + rel_start
-            if j + 1 < len(ac_images):
-                rel_end = float(ac_images[j + 1].get("start_time") or ac_dur)
-                t_end   = ac_start + rel_end
-            else:
-                t_end = ac_start + ac_dur
-            t_end = min(t_end, ac_start + ac_dur, duration)
-            if t_end <= t_start:
-                continue
-            try:
-                frame = _fit_frame(path, resolution)
-                clip  = (ImageClip(frame, duration=t_end - t_start)
-                         .with_fps(fps)
-                         .with_start(t_start))
-                layers.append(clip)
-            except Exception:
-                pass
+        except Exception:
+            pass
 
     video = CompositeVideoClip(layers, size=resolution)
     if audio_clips:

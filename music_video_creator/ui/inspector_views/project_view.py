@@ -89,10 +89,9 @@ class ProjectView:
             self._set_btn_enabled(False)
             return
 
-        # Stop spinner if it was running
-        if self._prog_bar.cget("mode") == "indeterminate":
-            self._prog_bar.stop()
-            self._prog_bar.config(mode="determinate")
+        # Always stop and restore determinate mode (safe even if already stopped)
+        self._prog_bar.stop()
+        self._prog_bar.config(mode="determinate")
 
         if fraction < 0:
             self._prog_bar["value"] = 0

@@ -27,26 +27,25 @@ def _nice_tick(total: float, target_count: int = 6) -> float:
 
 
 def _cue_min_gap(cues: list) -> float:
-    """Return the smallest gap between consecutive cue start times, or 0 if not enough cues."""
-    if len(cues) < 2:
+    starts = sorted(float(c.get("start", 0.0)) for c in cues)
+    if len(starts) < 2:
         return 0.0
-    gaps = [cues[i + 1]["start"] - cues[i]["start"]
-            for i in range(len(cues) - 1)
-            if cues[i + 1]["start"] > cues[i]["start"]]
-    return min(gaps) if gaps else 0.0
+    return min(b - a for a, b in zip(starts, starts[1:]) if b > a)
 
 
 class VideoClipView:
     def __init__(self, body: tk.Frame, colors: dict,
                  on_update=None, on_add_assets=None, auto_space_var=None,
-                 get_children=None, on_remove_audio_clip=None):
-        self._body                = body
-        self._colors              = colors
-        self._on_update           = on_update
-        self._on_add_assets       = on_add_assets
-        self._auto_space_var      = auto_space_var or tk.BooleanVar(value=False)
-        self._get_children        = get_children
-        self._on_remove_audio_clip = on_remove_audio_clip
+                 get_children=None, on_remove_audio_clip=None,
+                 get_node=None):
+        self._body                  = body
+        self._colors                = colors
+        self._on_update             = on_update
+        self._on_add_assets         = on_add_assets
+        self._auto_space_var        = auto_space_var or tk.BooleanVar(value=False)
+        self._get_children          = get_children
+        self._on_remove_audio_clip  = on_remove_audio_clip
+        self._get_node              = get_node
         self._add_btn             = None
         self._name_var            = tk.StringVar()
         self._dur_var             = tk.StringVar()
@@ -57,6 +56,10 @@ class VideoClipView:
         self._pil_cache           = {}
         self._audio_clip_frame    = None
         self._add_ac_btn          = None
+        self._ac_btn_is_remove    = False
+        self._show_lyrics_var     = tk.BooleanVar(value=False)
+        self._lyrics_chk          = None
+        self._cues                = []
 
     def build(self, node: dict):
         self._node = node
@@ -140,6 +143,22 @@ class VideoClipView:
         tk.Label(hdr, text="Clip Preview", bg=bg,
                  fg=self._colors["fg_dim_alt"],
                  font=("Helvetica", 8)).pack(side=tk.LEFT)
+        real_node = self._get_node() if self._get_node else node
+        self._show_lyrics_var.set(real_node.get("_show_lyrics", False))
+        self._lyrics_chk = tk.Checkbutton(
+            hdr, text="Show Lyrics",
+            variable=self._show_lyrics_var,
+            bg=bg,
+            fg=self._colors["fg_value"],
+            selectcolor=self._colors.get("bg_dark", "#252525"),
+            activebackground=bg,
+            activeforeground=self._colors["fg_primary"],
+            font=("Helvetica", 8),
+            cursor="hand2",
+            command=self._on_lyrics_toggle,
+        )
+        # Now the widget exists — sync visibility with current children
+        self._update_lyrics_checkbox()
 
         self._preview_lbl = tk.Label(self._body, bg=bg)
         self._preview_lbl.pack(pady=(0, 6))
@@ -179,6 +198,9 @@ class VideoClipView:
     def set_add_audio_clip_button_state(self, enabled: bool):
         if not self._add_ac_btn:
             return
+        # Don't override the button when it's acting as a remove ("-") button
+        if getattr(self, "_ac_btn_is_remove", False):
+            return
         try:
             if enabled:
                 self._add_ac_btn.config(bg="#28a745", fg="white",
@@ -216,32 +238,65 @@ class VideoClipView:
         except tk.TclError:
             return
 
-        bg  = self._colors["bg_darkest"]
-        children = self._get_children() if self._get_children else []
-        ac = next((n for n in children if n.get("type") == "audio_clip"), None)
+        import json as _json, os as _os
+        bg        = self._colors["bg_darkest"]
+        real_node = self._get_node() if self._get_node else self._node
+        path      = real_node.get("audio_clip_path", "") if real_node else ""
 
-        if ac:
-            name = ac.get("name") or "Audio Clip"
-            dur  = float(ac.get("duration") or 0.0)
+        if path and _os.path.isfile(path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    info = _json.load(f)
+                name = _os.path.splitext(_os.path.basename(path))[0]
+                dur  = float(info.get("duration_seconds", 0.0))
+                self._cues = sorted(info.get("lyrics", {}).get("cues", []),
+                                    key=lambda c: c.get("start", 0.0))
+            except Exception:
+                name = _os.path.basename(path)
+                dur  = 0.0
+                self._cues = []
             tk.Label(self._audio_clip_frame,
                      text=f"🎵  {name}  ({dur:.1f}s)",
                      bg=bg, fg="#8e44ad",
                      font=("Helvetica", 8, "bold"),
-                     anchor="w", wraplength=170).pack(side=tk.LEFT, fill=tk.X, expand=True)
-            if self._on_remove_audio_clip:
-                tk.Button(self._audio_clip_frame, text="×",
-                          command=self._do_remove_audio_clip,
-                          bg=bg, fg=self._colors["fg_dim_alt"],
-                          relief=tk.FLAT, bd=0,
-                          font=("Helvetica", 11),
-                          cursor="hand2",
-                          activebackground=self._colors.get("bg_medium", "#2b2b2b"),
-                          activeforeground=self._colors["fg_primary"]).pack(side=tk.RIGHT)
+                     anchor="w", wraplength=170).pack(fill=tk.X)
+            self._ac_btn_is_remove = True
+            if self._add_ac_btn:
+                self._add_ac_btn.config(
+                    text="−", command=self._do_remove_audio_clip,
+                    bg="#c0392b", fg="white",
+                    activebackground="#96281b", activeforeground="white",
+                    cursor="hand2")
         else:
+            self._cues = []
             tk.Label(self._audio_clip_frame,
                      text="None — add a .info file from Assets",
                      bg=bg, fg=self._colors["fg_dim"],
-                     font=("Helvetica", 8), anchor="w").pack(side=tk.LEFT)
+                     font=("Helvetica", 8), anchor="w").pack(fill=tk.X)
+            self._ac_btn_is_remove = False
+            if self._add_ac_btn:
+                self._add_ac_btn.config(
+                    text="+", command=self._do_add_assets,
+                    bg="#555555", fg="#999",
+                    activebackground="#555555", activeforeground="#999",
+                    cursor="")
+        self._update_lyrics_checkbox()
+
+    def _on_lyrics_toggle(self):
+        val = self._show_lyrics_var.get()
+        real_node = self._get_node() if self._get_node else self._node
+        if real_node is not None:
+            real_node["_show_lyrics"] = val
+        self._draw_strip()
+
+    def _update_lyrics_checkbox(self):
+        if not self._lyrics_chk:
+            return
+        if self._cues:
+            self._lyrics_chk.pack(side=tk.RIGHT)
+        else:
+            self._lyrics_chk.pack_forget()
+            self._show_lyrics_var.set(False)
 
     def _do_remove_audio_clip(self):
         if self._on_remove_audio_clip:
@@ -294,13 +349,6 @@ class VideoClipView:
         self._draw_strip()
         self._update_preview()
 
-    def _get_ac_and_cues(self, children: list):
-        """Return (ac_node_or_None, sorted_cues_list)."""
-        ac = next((n for n in children if n.get("type") == "audio_clip"), None)
-        cues = sorted((ac.get("_cues") or []) if ac else [],
-                      key=lambda c: c.get("start", 0.0))
-        return ac, cues
-
     def _draw_strip(self):
         c = self._strip_canvas
         if not c:
@@ -324,7 +372,8 @@ class VideoClipView:
             return
 
         children     = self._get_children() if self._get_children else []
-        _, cues      = self._get_ac_and_cues(children)
+        cues         = self._cues
+        show_lyrics  = self._show_lyrics_var.get() and bool(cues)
         direct_audio = [n for n in children if n.get("type") == "audio"]
         direct_imgs  = sorted([n for n in children if n.get("type") == "image"],
                               key=lambda n: n.get("start_time") or 0.0)
@@ -338,15 +387,6 @@ class VideoClipView:
                 lbl   = text[:max_c - 1] + "…" if len(text) > max_c else text
                 c.create_text((x0 + x1) / 2, y_mid, text=lbl,
                               fill="white", font=("Helvetica", 7), anchor="center")
-
-        # ── Cue marker background lines ───────────────────────────
-        for cue in cues:
-            t = float(cue.get("start", 0.0))
-            if t > dur + 1e-9:
-                break
-            x = 2 + t * px_per_s
-            c.create_line(x, _LANE_TOP, x, _LANE_BOT,
-                          fill="#6a3d6a", dash=(3, 3), width=1)
 
         # ── Direct audio bars (blue) ──────────────────────────────
         for n in direct_audio:
@@ -368,16 +408,27 @@ class VideoClipView:
             c.create_rectangle(x0, _LANE_TOP, x1, _LANE_BOT, fill="#5cb85c", outline="")
             _bar_label(x0, x1, (_LANE_TOP + _LANE_BOT) / 2, n.get("name") or "img")
 
-        # ── Time ticks (min interval ≥ min cue gap) ───────────────
-        inc = _nice_tick(dur)
-        min_gap = _cue_min_gap(cues)
-        if min_gap > 0 and inc < min_gap:
-            for step in _TICK_STEPS:
-                if step >= min_gap:
-                    inc = step
+        # ── Cue marker lines (drawn after bars so they appear on top) ─
+        if show_lyrics:
+            for cue in cues:
+                t = float(cue.get("start", 0.0))
+                if t > dur + 1e-9:
                     break
-            else:
-                inc = _TICK_STEPS[-1]
+                x = 2 + t * px_per_s
+                c.create_line(x, _LANE_TOP, x, _LANE_BOT,
+                              fill="#9b59b6", dash=(3, 3), width=1)
+
+        # ── Time ticks (min interval ≥ min cue gap when lyrics on) ──
+        inc = _nice_tick(dur)
+        if show_lyrics:
+            min_gap = _cue_min_gap(cues)
+            if min_gap > 0 and inc < min_gap:
+                for step in _TICK_STEPS:
+                    if step >= min_gap:
+                        inc = step
+                        break
+                else:
+                    inc = _TICK_STEPS[-1]
 
         t = 0.0
         while t <= dur + 1e-9:
@@ -389,14 +440,15 @@ class VideoClipView:
             t = round(t + inc, 10)
 
         # ── Cue text labels ───────────────────────────────────────
-        for cue in cues:
-            t    = float(cue.get("start", 0.0))
-            text = (cue.get("text") or "").strip()
-            if not text or t > dur + 1e-9:
-                continue
-            x = 2 + t * px_per_s
-            c.create_text(x + 2, _CUE_Y, text=text[:18],
-                          anchor="nw", fill="#9b59b6", font=("Helvetica", 6))
+        if show_lyrics:
+            for cue in cues:
+                t    = float(cue.get("start", 0.0))
+                text = (cue.get("text") or "").strip()
+                if not text or t > dur + 1e-9:
+                    continue
+                x = 2 + t * px_per_s
+                c.create_text(x + 2, _CUE_Y, text=text[:18],
+                              anchor="nw", fill="#9b59b6", font=("Helvetica", 6))
 
         # ── Playhead ──────────────────────────────────────────────
         px = 2 + self._playhead_t * px_per_s
