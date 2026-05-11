@@ -436,20 +436,21 @@ class VideoClipView:
         direct_imgs  = sorted([n for n in children if n.get("type") == "image"],
                               key=lambda n: n.get("start_time") or 0.0)
 
-        ac_start = self._ac_t_start
-        px_per_s = (w - 4) / dur
+        ac_start  = self._ac_t_start
+        px_per_s  = (w - 4) / dur
+        font_size = max(7, min(14, h // 14))
 
         lane_top = 8
-        lane_bot = max(lane_top + 12, h - 24)
-        label_y  = h - 10
+        lane_bot = max(lane_top + 12, h - font_size - 14)
+        label_y  = h - 8
 
         def _bar_label(x0, x1, y_mid, text):
             bar_w = x1 - x0
             if bar_w > 16:
-                max_c = max(1, int(bar_w / 6))
+                max_c = max(1, int(bar_w / font_size))
                 lbl   = text[:max_c - 1] + "…" if len(text) > max_c else text
                 c.create_text((x0 + x1) / 2, y_mid, text=lbl,
-                              fill="white", font=("Helvetica", 7), anchor="center")
+                              fill="white", font=("Helvetica", font_size), anchor="center")
 
         for n in direct_audio:
             t0 = float(n.get("start_time") or 0.0)
@@ -475,5 +476,5 @@ class VideoClipView:
             label = f"{int(t_abs)}s" if abs(t_abs - round(t_abs)) < 1e-6 else f"{t_abs:.1f}s"
             c.create_line(x, lane_bot + 2, x, lane_bot + 6, fill=dim, width=1)
             c.create_text(x, label_y, text=label, anchor="n",
-                          fill=dim, font=("Helvetica", 7))
+                          fill=dim, font=("Helvetica", font_size))
             t = round(t + inc, 10)
