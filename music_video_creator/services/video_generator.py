@@ -127,7 +127,7 @@ def _build_clip(clip_data: dict, resolution: tuple, fps: int):
                     t_start = float(clip_data.get("audio_clip_start") or 0.0)
                     t_end   = float(clip_data.get("audio_clip_end") or ac.duration)
                     t_start = max(0.0, min(t_start, ac.duration))
-                    t_end   = max(t_start, min(t_end, ac.duration, duration))
+                    t_end   = max(t_start, min(t_end, ac.duration))
                 ac = ac.subclipped(t_start, t_end)
                 audio_clips.append(ac)
         except Exception:
