@@ -216,20 +216,27 @@ class AssetInClipView:
     # ── Private ───────────────────────────────────────────────────
 
     def _on_pane_resize_start(self, event):
-        self._pane_resize_y0 = event.y_root
-        self._pane_resize_h0 = (self._preview_frame.winfo_height()
-                                 if self._preview_frame else self._preview_h)
+        self._pane_resize_y0          = event.y_root
+        self._pane_resize_h0          = (self._preview_frame.winfo_height()
+                                          if self._preview_frame else self._preview_h)
+        self._pane_resize_timeline_h0 = (self._timeline_canvas.winfo_height()
+                                          if self._timeline_canvas else self._timeline_h)
 
     def _on_pane_resize_drag(self, event):
         if self._pane_resize_y0 is None or not self._preview_frame:
             return
         delta = event.y_root - self._pane_resize_y0
-        new_h = max(_PREVIEW_H_MIN, min(_PREVIEW_H_MAX, self._pane_resize_h0 + delta))
-        self._preview_h = int(new_h)
+        self._preview_h  = int(max(_PREVIEW_H_MIN,  min(_PREVIEW_H_MAX,  self._pane_resize_h0          + delta)))
+        self._timeline_h = int(max(_TIMELINE_H_MIN, min(_TIMELINE_H_MAX, self._pane_resize_timeline_h0 - delta)))
         try:
             self._preview_frame.config(height=self._preview_h)
         except tk.TclError:
             pass
+        if self._timeline_canvas:
+            try:
+                self._timeline_canvas.config(height=self._timeline_h)
+            except tk.TclError:
+                pass
         self._refresh_preview()
 
     def _on_timeline_resize_start(self, event):
