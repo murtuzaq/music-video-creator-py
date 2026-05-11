@@ -8,7 +8,10 @@ _TICK_STEPS = (0.05, 0.1, 0.2, 0.25, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300)
 _LANE_TOP = 8
 _LANE_BOT = 44
 _LABEL_Y  = 57
-_STRIP_H  = 75
+
+_PREVIEW_H_DEFAULT = 120
+_PREVIEW_H_MIN     = 60
+_PREVIEW_H_MAX     = 500
 
 
 def _nice_tick(total: float, target_count: int = 6) -> float:
@@ -37,6 +40,10 @@ class VideoClipView:
         self._dur_var              = tk.StringVar()
         self._node                 = None
         self._strip_canvas         = None
+        self._preview_frame        = None
+        self._preview_h            = _PREVIEW_H_DEFAULT
+        self._pane_resize_y0       = None
+        self._pane_resize_h0       = None
         self._audio_clip_frame     = None
         self._add_ac_btn           = None
         self._ac_btn_is_remove     = False
@@ -47,15 +54,42 @@ class VideoClipView:
         self._ac_end_entry         = None
         self._ac_file_dur          = 0.0
         self._ac_t_start           = 0.0
-        self._strip_resize_y0      = None
-        self._strip_resize_h0      = None
 
     def build(self, node: dict):
         self._node = node
         bg = self._colors["bg_darkest"]
 
-        # ── icon row + Add button ─────────────────────────────────
-        icon_row = tk.Frame(self._body, bg=bg)
+        # ── Preview pane: Clip Timeline ───────────────────────────────
+        self._preview_frame = tk.Frame(self._body, bg=bg, height=self._preview_h)
+        self._preview_frame.pack(fill=tk.X)
+        self._preview_frame.pack_propagate(False)
+
+        tk.Label(self._preview_frame, text="Clip Timeline", bg=bg,
+                 fg=self._colors["fg_dim_alt"],
+                 font=("Helvetica", 8)).pack(anchor="w", padx=4, pady=(4, 2))
+
+        self._strip_canvas = tk.Canvas(
+            self._preview_frame,
+            bg=self._colors.get("bg_dark", "#252525"),
+            highlightthickness=1,
+            highlightbackground=self._colors.get("bg_medium", "#2b2b2b"))
+        self._strip_canvas.pack(fill=tk.BOTH, expand=True, padx=4, pady=(0, 4))
+        self._strip_canvas.bind("<Configure>", lambda _e: self._draw_strip())
+
+        # ── Drag handle between panes ─────────────────────────────────
+        handle = tk.Frame(self._body,
+                          bg=self._colors.get("bg_medium", "#2b2b2b"),
+                          height=6, cursor="sb_v_double_arrow")
+        handle.pack(fill=tk.X)
+        handle.bind("<Button-1>",  self._on_pane_resize_start)
+        handle.bind("<B1-Motion>", self._on_pane_resize_drag)
+
+        # ── Controls pane ─────────────────────────────────────────────
+        ctrl = tk.Frame(self._body, bg=bg)
+        ctrl.pack(fill=tk.X)
+
+        # icon row + Add button
+        icon_row = tk.Frame(ctrl, bg=bg)
         icon_row.pack(fill=tk.X, pady=(14, 8))
         tk.Label(icon_row, text="🎞", bg=bg, fg="#9b59b6",
                  font=("Helvetica", 36)).pack(side=tk.LEFT)
@@ -67,20 +101,20 @@ class VideoClipView:
                                   font=("Helvetica", 9, "bold"), cursor="")
         self._add_btn.pack(side=tk.RIGHT, padx=4)
 
-        # ── Name ──────────────────────────────────────────────────
-        field_label(self._body, "Name", self._colors)
+        # Name
+        field_label(ctrl, "Name", self._colors)
         self._name_var.set(node.get("name") or "")
         self._name_var.trace_add("write", self._on_name_change)
-        tk.Entry(self._body, textvariable=self._name_var,
+        tk.Entry(ctrl, textvariable=self._name_var,
                  bg=self._colors.get("bg_dark", "#252525"),
                  fg=self._colors["fg_value"],
                  insertbackground=self._colors["fg_primary"],
                  relief=tk.FLAT, bd=4,
                  font=("Helvetica", 9)).pack(fill=tk.X, pady=(0, 8))
 
-        # ── Audio Clip section ────────────────────────────────────
-        ttk.Separator(self._body, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=(2, 6))
-        ac_hdr = tk.Frame(self._body, bg=bg)
+        # Audio Clip section
+        ttk.Separator(ctrl, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=(2, 6))
+        ac_hdr = tk.Frame(ctrl, bg=bg)
         ac_hdr.pack(fill=tk.X, pady=(0, 2))
         tk.Label(ac_hdr, text="Audio Clip", bg=bg,
                  fg=self._colors["fg_dim_alt"],
@@ -94,25 +128,25 @@ class VideoClipView:
             font=("Helvetica", 9, "bold"), cursor="",
         )
         self._add_ac_btn.pack(side=tk.RIGHT)
-        self._audio_clip_frame = tk.Frame(self._body, bg=bg)
+        self._audio_clip_frame = tk.Frame(ctrl, bg=bg)
         self._audio_clip_frame.pack(fill=tk.X, pady=(2, 8))
         self._refresh_audio_clip_section()
 
-        # ── Duration ──────────────────────────────────────────────
-        field_label(self._body, "Duration (seconds)", self._colors)
+        # Duration
+        field_label(ctrl, "Duration (seconds)", self._colors)
         dur = node.get("duration")
         self._dur_var.set(str(dur) if dur is not None else "0")
         self._dur_var.trace_add("write", self._on_dur_change)
-        tk.Entry(self._body, textvariable=self._dur_var,
+        tk.Entry(ctrl, textvariable=self._dur_var,
                  bg=self._colors.get("bg_dark", "#252525"),
                  fg=self._colors["fg_value"],
                  insertbackground=self._colors["fg_primary"],
                  relief=tk.FLAT, bd=4,
                  font=("Helvetica", 9)).pack(fill=tk.X, pady=(0, 8))
 
-        # ── Auto Spacing ──────────────────────────────────────────
-        ttk.Separator(self._body, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=(10, 8))
-        tk.Checkbutton(self._body,
+        # Auto Spacing
+        ttk.Separator(ctrl, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=(10, 8))
+        tk.Checkbutton(ctrl,
                        text="Auto-space",
                        variable=self._auto_space_var,
                        bg=bg,
@@ -122,27 +156,6 @@ class VideoClipView:
                        activeforeground=self._colors["fg_primary"],
                        font=("Helvetica", 9),
                        cursor="hand2").pack(anchor="w")
-
-        # ── Clip Timeline ─────────────────────────────────────────
-        ttk.Separator(self._body, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=(10, 8))
-        tk.Label(self._body, text="Clip Timeline", bg=bg,
-                 fg=self._colors["fg_dim_alt"],
-                 font=("Helvetica", 8)).pack(anchor="w", pady=(0, 4))
-
-        self._strip_canvas = tk.Canvas(
-            self._body,
-            bg=self._colors.get("bg_dark", "#252525"),
-            height=_STRIP_H, highlightthickness=1,
-            highlightbackground=self._colors.get("bg_medium", "#2b2b2b"))
-        self._strip_canvas.pack(fill=tk.X, pady=(0, 0))
-        self._strip_canvas.bind("<Configure>", lambda _e: self._draw_strip())
-
-        handle = tk.Frame(self._body,
-                          bg=self._colors.get("bg_medium", "#2b2b2b"),
-                          height=6, cursor="sb_v_double_arrow")
-        handle.pack(fill=tk.X, pady=(0, 8))
-        handle.bind("<Button-1>",  self._on_resize_start)
-        handle.bind("<B1-Motion>", self._on_resize_drag)
 
         self._draw_strip()
 
@@ -193,6 +206,23 @@ class VideoClipView:
         self._draw_strip()
 
     # ── Private ───────────────────────────────────────────────────
+
+    def _on_pane_resize_start(self, event):
+        self._pane_resize_y0 = event.y_root
+        self._pane_resize_h0 = (self._preview_frame.winfo_height()
+                                 if self._preview_frame else self._preview_h)
+
+    def _on_pane_resize_drag(self, event):
+        if self._pane_resize_y0 is None or not self._preview_frame:
+            return
+        delta = event.y_root - self._pane_resize_y0
+        new_h = max(_PREVIEW_H_MIN, min(_PREVIEW_H_MAX, self._pane_resize_h0 + delta))
+        self._preview_h = int(new_h)
+        try:
+            self._preview_frame.config(height=self._preview_h)
+        except tk.TclError:
+            pass
+        self._draw_strip()
 
     def _refresh_audio_clip_section(self):
         if not self._audio_clip_frame:
@@ -379,21 +409,6 @@ class VideoClipView:
             self._on_update(self._node.get("name") or "Video Clip", dur)
         self._draw_strip()
 
-    def _on_resize_start(self, event):
-        self._strip_resize_y0 = event.y_root
-        self._strip_resize_h0 = self._strip_canvas.winfo_height() if self._strip_canvas else _STRIP_H
-
-    def _on_resize_drag(self, event):
-        if self._strip_resize_y0 is None or not self._strip_canvas:
-            return
-        delta = event.y_root - self._strip_resize_y0
-        new_h = max(50, min(400, self._strip_resize_h0 + delta))
-        try:
-            self._strip_canvas.config(height=int(new_h))
-        except tk.TclError:
-            pass
-        self._draw_strip()
-
     def _draw_strip(self):
         c = self._strip_canvas
         if not c:
@@ -424,6 +439,10 @@ class VideoClipView:
         ac_start = self._ac_t_start
         px_per_s = (w - 4) / dur
 
+        lane_top = 8
+        lane_bot = max(lane_top + 12, h - 24)
+        label_y  = h - 10
+
         def _bar_label(x0, x1, y_mid, text):
             bar_w = x1 - x0
             if bar_w > 16:
@@ -437,16 +456,16 @@ class VideoClipView:
             t1 = t0 + float(n.get("_audio_dur") or 0.0)
             x0 = 2 + t0 * px_per_s
             x1 = max(x0 + 3, 2 + t1 * px_per_s)
-            c.create_rectangle(x0, _LANE_TOP, x1, _LANE_BOT, fill="#4a90d9", outline="")
-            _bar_label(x0, x1, (_LANE_TOP + _LANE_BOT) / 2, n.get("name") or "audio")
+            c.create_rectangle(x0, lane_top, x1, lane_bot, fill="#4a90d9", outline="")
+            _bar_label(x0, x1, (lane_top + lane_bot) / 2, n.get("name") or "audio")
 
         for i, n in enumerate(direct_imgs):
             t0 = float(n.get("start_time") or 0.0)
             t1 = float(direct_imgs[i + 1].get("start_time") or 0.0) if i + 1 < len(direct_imgs) else dur
             x0 = 2 + t0 * px_per_s
             x1 = max(x0 + 3, 2 + t1 * px_per_s)
-            c.create_rectangle(x0, _LANE_TOP, x1, _LANE_BOT, fill="#5cb85c", outline="")
-            _bar_label(x0, x1, (_LANE_TOP + _LANE_BOT) / 2, n.get("name") or "img")
+            c.create_rectangle(x0, lane_top, x1, lane_bot, fill="#5cb85c", outline="")
+            _bar_label(x0, x1, (lane_top + lane_bot) / 2, n.get("name") or "img")
 
         inc = _nice_tick(dur)
         t   = 0.0
@@ -454,7 +473,7 @@ class VideoClipView:
             x     = 2 + t * px_per_s
             t_abs = ac_start + t
             label = f"{int(t_abs)}s" if abs(t_abs - round(t_abs)) < 1e-6 else f"{t_abs:.1f}s"
-            c.create_line(x, _LANE_BOT + 2, x, _LANE_BOT + 6, fill=dim, width=1)
-            c.create_text(x, _LABEL_Y, text=label, anchor="n",
+            c.create_line(x, lane_bot + 2, x, lane_bot + 6, fill=dim, width=1)
+            c.create_text(x, label_y, text=label, anchor="n",
                           fill=dim, font=("Helvetica", 7))
             t = round(t + inc, 10)

@@ -15,6 +15,10 @@ M_TOP = 10
 M_BOT = 10
 LX    = 55
 
+_PREVIEW_H_DEFAULT = 200
+_PREVIEW_H_MIN     = 60
+_PREVIEW_H_MAX     = 600
+
 
 def _nice_tick(view_dur: float) -> float:
     """Return a tick interval that gives ~8 ticks across view_dur."""
@@ -43,27 +47,67 @@ class AssetInClipView:
         self._show_lyrics_var   = tk.BooleanVar(value=show_lyrics and bool(cues))
         self._on_toggle_lyrics  = on_toggle_lyrics
         self._lyrics_chk        = None
-        self._up_btn          = None
-        self._down_btn        = None
-        self._pil_src         = None
-        self._preview_lbl     = None
-        self._start_var        = tk.StringVar()
-        self._suppress_manual  = False
-        self._timeline_canvas  = None
-        self._view_duration   = 0.0   # total seconds visible in the fixed canvas
-        self._parent_duration = 0.0
-        self._node            = None
+        self._up_btn            = None
+        self._down_btn          = None
+        self._pil_src           = None
+        self._preview_lbl       = None
+        self._preview_frame     = None
+        self._preview_h         = _PREVIEW_H_DEFAULT
+        self._pane_resize_y0    = None
+        self._pane_resize_h0    = None
+        self._start_var         = tk.StringVar()
+        self._suppress_manual   = False
+        self._timeline_canvas   = None
+        self._view_duration     = 0.0
+        self._parent_duration   = 0.0
+        self._node              = None
 
     def build(self, node: dict, parent_duration: float):
         self._node            = node
         self._parent_duration = parent_duration
-        self._view_duration   = max(0.01, parent_duration)  # start fully zoomed out
+        self._view_duration   = max(0.01, parent_duration)
         bg    = self._colors["bg_darkest"]
         ntype = node.get("type", "image")
         path  = node.get("path") or ""
 
-        # ── reorder buttons ───────────────────────────────────────
-        order_row = tk.Frame(self._body, bg=bg)
+        # ── Preview pane ──────────────────────────────────────────────
+        self._preview_frame = tk.Frame(self._body, bg=bg, height=self._preview_h)
+        self._preview_frame.pack(fill=tk.X)
+        self._preview_frame.pack_propagate(False)
+
+        if ntype == "image" and _PIL and path:
+            try:
+                self._pil_src     = Image.open(path)
+                self._preview_lbl = tk.Label(self._preview_frame, bg=bg)
+                self._preview_lbl.pack(fill=tk.BOTH, expand=True)
+                self._refresh_preview()
+            except Exception:
+                self._pil_src = None
+                tk.Label(self._preview_frame, text="(preview unavailable)",
+                         bg=bg, fg=self._colors["fg_dim"],
+                         font=("Helvetica", 8)).pack(expand=True)
+        elif ntype == "audio":
+            tk.Label(self._preview_frame, text="♪", bg=bg, fg="#4a90d9",
+                     font=("Helvetica", 32)).pack(expand=True)
+        else:
+            tk.Label(self._preview_frame, text="No preview",
+                     bg=bg, fg=self._colors["fg_dim"],
+                     font=("Helvetica", 8)).pack(expand=True)
+
+        # ── Drag handle between panes ─────────────────────────────────
+        handle = tk.Frame(self._body,
+                          bg=self._colors.get("bg_medium", "#2b2b2b"),
+                          height=6, cursor="sb_v_double_arrow")
+        handle.pack(fill=tk.X)
+        handle.bind("<Button-1>",  self._on_pane_resize_start)
+        handle.bind("<B1-Motion>", self._on_pane_resize_drag)
+
+        # ── Controls pane ─────────────────────────────────────────────
+        ctrl = tk.Frame(self._body, bg=bg)
+        ctrl.pack(fill=tk.X)
+
+        # reorder buttons
+        order_row = tk.Frame(ctrl, bg=bg)
         order_row.pack(fill=tk.X, pady=(8, 2))
         btn_kw = dict(relief=tk.FLAT, bd=0, padx=10, pady=3,
                       font=("Helvetica", 9, "bold"), cursor="hand2",
@@ -78,32 +122,19 @@ class AssetInClipView:
         self._up_btn.pack(side=tk.LEFT, padx=(0, 4))
         self._down_btn.pack(side=tk.LEFT)
 
-        # ── preview ───────────────────────────────────────────────
-        if ntype == "image" and _PIL and path:
-            try:
-                self._pil_src     = Image.open(path)
-                self._preview_lbl = tk.Label(self._body, bg=bg)
-                self._preview_lbl.pack(pady=(4, 6))
-                self._refresh_preview()
-            except Exception:
-                self._pil_src = None
-        elif ntype == "audio":
-            tk.Label(self._body, text="♪", bg=bg, fg="#4a90d9",
-                     font=("Helvetica", 32)).pack(pady=(8, 4))
-
-        # ── start-time field ──────────────────────────────────────
-        field_label(self._body, "Start Time (seconds)", self._colors)
+        # start-time field
+        field_label(ctrl, "Start Time (seconds)", self._colors)
         self._start_var.set(str(node.get("start_time") or 0.0))
         self._start_var.trace_add("write", self._on_start_change)
-        tk.Entry(self._body, textvariable=self._start_var,
+        tk.Entry(ctrl, textvariable=self._start_var,
                  bg=self._colors.get("bg_dark", "#252525"),
                  fg=self._colors["fg_value"],
                  insertbackground=self._colors["fg_primary"],
                  relief=tk.FLAT, bd=4,
                  font=("Helvetica", 9)).pack(fill=tk.X, pady=(0, 8))
 
-        # ── timeline header ───────────────────────────────────────
-        hdr = tk.Frame(self._body, bg=bg)
+        # timeline header
+        hdr = tk.Frame(ctrl, bg=bg)
         hdr.pack(fill=tk.X, pady=(8, 2))
         tk.Label(hdr, text="Timeline  (↑↓ to move)", bg=bg,
                  fg=self._colors["fg_dim_alt"],
@@ -131,8 +162,8 @@ class AssetInClipView:
                   relief=tk.FLAT, bd=0, padx=6, pady=1,
                   font=("Helvetica", 9, "bold"), cursor="hand2").pack(side=tk.RIGHT, padx=(0, 2))
 
-        # ── timeline canvas ───────────────────────────────────────
-        self._timeline_canvas = tk.Canvas(self._body,
+        # timeline canvas
+        self._timeline_canvas = tk.Canvas(ctrl,
                                           bg=bg, highlightthickness=1,
                                           highlightcolor=self._colors.get("bg_dark", "#252525"),
                                           height=160)
@@ -168,6 +199,23 @@ class AssetInClipView:
         self._refresh_preview()
 
     # ── Private ───────────────────────────────────────────────────
+
+    def _on_pane_resize_start(self, event):
+        self._pane_resize_y0 = event.y_root
+        self._pane_resize_h0 = (self._preview_frame.winfo_height()
+                                 if self._preview_frame else self._preview_h)
+
+    def _on_pane_resize_drag(self, event):
+        if self._pane_resize_y0 is None or not self._preview_frame:
+            return
+        delta = event.y_root - self._pane_resize_y0
+        new_h = max(_PREVIEW_H_MIN, min(_PREVIEW_H_MAX, self._pane_resize_h0 + delta))
+        self._preview_h = int(new_h)
+        try:
+            self._preview_frame.config(height=self._preview_h)
+        except tk.TclError:
+            pass
+        self._refresh_preview()
 
     def _on_lyrics_toggle_click(self):
         val = self._show_lyrics_var.get()
@@ -258,7 +306,7 @@ class AssetInClipView:
         # vertical spine
         c.create_line(LX, M_TOP, LX, h - M_BOT, fill=dim, width=2)
 
-        # tick marks — start at the first multiple of inc >= view_start
+        # tick marks
         t = round((view_start // inc) * inc, 10)
         if t < view_start - 1e-9:
             t = round(t + inc, 10)
@@ -270,7 +318,7 @@ class AssetInClipView:
                           fill=dim, font=("Helvetica", 7))
             t = round(t + inc, 10)
 
-        # cue markers (right of spine) — only when lyrics checkbox is on
+        # cue markers — only when lyrics checkbox is on
         for cue in (self._cues if self._show_lyrics_var.get() else []):
             t = float(cue.get("start", 0.0))
             if t < view_start - 1e-9 or t > view_end + 1e-9:
@@ -310,8 +358,10 @@ class AssetInClipView:
         if not self._pil_src or not self._preview_lbl:
             return
         w = max(60, self._body.winfo_width() - 20)
+        h = max(60, (self._preview_frame.winfo_height()
+                     if self._preview_frame else self._preview_h) - 10)
         img = self._pil_src.copy()
-        img.thumbnail((w, 240))
+        img.thumbnail((w, h))
         photo = ImageTk.PhotoImage(img)
         self._preview_lbl.config(image=photo)
         self._preview_lbl._photo = photo
