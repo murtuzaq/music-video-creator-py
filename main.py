@@ -170,10 +170,18 @@ class MusicVideoCreator(tk.Tk):
                     try:
                         with open(ac_path, "r", encoding="utf-8") as _f:
                             _info = _json.load(_f)
-                        cues = sorted(
+                        use_full = parent_node.get("audio_clip_use_full", True)
+                        ac_start = 0.0 if use_full else float(parent_node.get("audio_clip_start") or 0.0)
+                        raw_cues = sorted(
                             _info.get("lyrics", {}).get("cues", []),
                             key=lambda c: c.get("start", 0.0),
                         )
+                        cues = [
+                            {**cue, "start": float(cue.get("start", 0.0)) - ac_start}
+                            for cue in raw_cues
+                            if float(cue.get("start", 0.0)) - ac_start >= -1e-9
+                               and float(cue.get("start", 0.0)) - ac_start <= parent_duration + 1e-9
+                        ]
                     except Exception:
                         cues = []
             self.inspector_panel.show_asset_in_clip(

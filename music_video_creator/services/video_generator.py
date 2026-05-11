@@ -108,7 +108,7 @@ def _build_clip(clip_data: dict, resolution: tuple, fps: int):
         except Exception:
             pass
 
-    # audio_clip_path property — plays full duration from t=0
+    # audio_clip_path property
     ac_path = clip_data.get("audio_clip_path", "")
     if ac_path and os.path.isfile(ac_path):
         try:
@@ -116,8 +116,19 @@ def _build_clip(clip_data: dict, resolution: tuple, fps: int):
                 info = json.load(f)
             audio_path = info.get("audio_path", "")
             if audio_path and os.path.exists(audio_path):
-                ac = AudioFileClip(audio_path)
-                ac = ac.subclipped(0, min(ac.duration, duration))
+                ac        = AudioFileClip(audio_path)
+                use_full  = clip_data.get("audio_clip_use_full", True)
+                if use_full is None:
+                    use_full = True
+                if use_full:
+                    t_start = 0.0
+                    t_end   = min(ac.duration, duration)
+                else:
+                    t_start = float(clip_data.get("audio_clip_start") or 0.0)
+                    t_end   = float(clip_data.get("audio_clip_end") or ac.duration)
+                    t_start = max(0.0, min(t_start, ac.duration))
+                    t_end   = max(t_start, min(t_end, ac.duration, duration))
+                ac = ac.subclipped(t_start, t_end)
                 audio_clips.append(ac)
         except Exception:
             pass

@@ -340,14 +340,17 @@ class ProjectPanel:
     def _node_to_dict(self, item_id: str) -> dict:
         node = self._nodes.get(item_id, {})
         return {
-            "type":            node.get("type"),
-            "path":            node.get("path"),
-            "name":            node.get("name"),
-            "duration":        node.get("duration"),
-            "start_time":      node.get("start_time"),
-            "audio_clip_path": node.get("audio_clip_path"),
-            "children":        [self._node_to_dict(c)
-                                for c in self._tree.get_children(item_id)],
+            "type":               node.get("type"),
+            "path":               node.get("path"),
+            "name":               node.get("name"),
+            "duration":           node.get("duration"),
+            "start_time":         node.get("start_time"),
+            "audio_clip_path":    node.get("audio_clip_path"),
+            "audio_clip_use_full":node.get("audio_clip_use_full"),
+            "audio_clip_start":   node.get("audio_clip_start"),
+            "audio_clip_end":     node.get("audio_clip_end"),
+            "children":           [self._node_to_dict(c)
+                                   for c in self._tree.get_children(item_id)],
         }
 
     def _dict_to_tree(self, parent_id: str, node_data: dict) -> str:
@@ -360,12 +363,15 @@ class ProjectPanel:
                                        image=icon,
                                        open=True)
         self._nodes[item_id] = {
-            "type":            node_type,
-            "path":            path,
-            "name":            node_data.get("name"),
-            "duration":        node_data.get("duration"),
-            "start_time":      node_data.get("start_time"),
-            "audio_clip_path": node_data.get("audio_clip_path"),
+            "type":               node_type,
+            "path":               path,
+            "name":               node_data.get("name"),
+            "duration":           node_data.get("duration"),
+            "start_time":         node_data.get("start_time"),
+            "audio_clip_path":    node_data.get("audio_clip_path"),
+            "audio_clip_use_full":node_data.get("audio_clip_use_full"),
+            "audio_clip_start":   node_data.get("audio_clip_start"),
+            "audio_clip_end":     node_data.get("audio_clip_end"),
         }
         if node_type == "video_clip":
             m = re.search(r"\d+$", name)

@@ -60,6 +60,12 @@ class VideoClipView:
         self._show_lyrics_var     = tk.BooleanVar(value=False)
         self._lyrics_chk          = None
         self._cues                = []
+        self._use_full_var        = tk.BooleanVar(value=True)
+        self._ac_start_var        = tk.StringVar(value="0.0")
+        self._ac_end_var          = tk.StringVar(value="0.0")
+        self._ac_start_entry      = None
+        self._ac_end_entry        = None
+        self._ac_file_dur         = 0.0
 
     def build(self, node: dict):
         self._node = node
@@ -240,8 +246,13 @@ class VideoClipView:
 
         import json as _json, os as _os
         bg        = self._colors["bg_darkest"]
+        dark      = self._colors.get("bg_dark", "#252525")
+        dim       = self._colors["fg_dim"]
         real_node = self._get_node() if self._get_node else self._node
         path      = real_node.get("audio_clip_path", "") if real_node else ""
+
+        self._ac_start_entry = None
+        self._ac_end_entry   = None
 
         if path and _os.path.isfile(path):
             try:
@@ -255,11 +266,62 @@ class VideoClipView:
                 name = _os.path.basename(path)
                 dur  = 0.0
                 self._cues = []
+
+            self._ac_file_dur = dur
+
             tk.Label(self._audio_clip_frame,
                      text=f"🎵  {name}  ({dur:.1f}s)",
                      bg=bg, fg="#8e44ad",
                      font=("Helvetica", 8, "bold"),
                      anchor="w", wraplength=170).pack(fill=tk.X)
+
+            # Read persisted values (fall back to full-file defaults)
+            use_full  = real_node.get("audio_clip_use_full", True)
+            if use_full is None:
+                use_full = True
+            start_t   = float(real_node.get("audio_clip_start") or 0.0)
+            end_t     = float(real_node.get("audio_clip_end") or dur)
+            self._use_full_var.set(use_full)
+            self._ac_start_var.set(f"{start_t:.3f}")
+            self._ac_end_var.set(f"{end_t:.3f}")
+
+            # "Use entire audio file" checkbox
+            tk.Checkbutton(
+                self._audio_clip_frame,
+                text="Use entire audio file",
+                variable=self._use_full_var,
+                command=self._on_use_full_toggle,
+                bg=bg, fg=self._colors["fg_value"],
+                selectcolor=dark,
+                activebackground=bg,
+                activeforeground=self._colors["fg_primary"],
+                font=("Helvetica", 8),
+                cursor="hand2",
+            ).pack(anchor="w", pady=(4, 2))
+
+            # Start / End rows
+            entry_kw = dict(bg=dark, fg=self._colors["fg_value"],
+                            insertbackground=self._colors["fg_primary"],
+                            disabledbackground=bg, disabledforeground=dim,
+                            relief=tk.FLAT, bd=3, font=("Helvetica", 8), width=7)
+            lbl_kw   = dict(bg=bg, fg=self._colors["fg_dim_alt"],
+                            font=("Helvetica", 8), width=5, anchor="w")
+
+            for label, var, attr in (("Start", self._ac_start_var, "_ac_start_entry"),
+                                     ("End",   self._ac_end_var,   "_ac_end_entry")):
+                row = tk.Frame(self._audio_clip_frame, bg=bg)
+                row.pack(fill=tk.X, pady=1)
+                tk.Label(row, text=label + ":", **lbl_kw).pack(side=tk.LEFT)
+                ent = tk.Entry(row, textvariable=var, **entry_kw)
+                ent.pack(side=tk.LEFT, fill=tk.X, expand=True)
+                tk.Label(row, text="s", bg=bg, fg=dim,
+                         font=("Helvetica", 8)).pack(side=tk.LEFT, padx=(3, 0))
+                ent.bind("<FocusOut>", lambda e: self._on_ac_time_change())
+                ent.bind("<Return>",   lambda e: self._on_ac_time_change())
+                setattr(self, attr, ent)
+
+            self._update_ac_fields()
+
             self._ac_btn_is_remove = True
             if self._add_ac_btn:
                 self._add_ac_btn.config(
@@ -268,10 +330,11 @@ class VideoClipView:
                     activebackground="#96281b", activeforeground="white",
                     cursor="hand2")
         else:
-            self._cues = []
+            self._cues        = []
+            self._ac_file_dur = 0.0
             tk.Label(self._audio_clip_frame,
                      text="None — add a .info file from Assets",
-                     bg=bg, fg=self._colors["fg_dim"],
+                     bg=bg, fg=dim,
                      font=("Helvetica", 8), anchor="w").pack(fill=tk.X)
             self._ac_btn_is_remove = False
             if self._add_ac_btn:
@@ -288,6 +351,54 @@ class VideoClipView:
         if real_node is not None:
             real_node["_show_lyrics"] = val
         self._draw_strip()
+
+    def _on_use_full_toggle(self):
+        use_full  = self._use_full_var.get()
+        real_node = self._get_node() if self._get_node else self._node
+        if real_node is not None:
+            real_node["audio_clip_use_full"] = use_full
+        self._update_ac_fields()
+        if use_full:
+            new_dur = self._ac_file_dur
+        else:
+            try:
+                s = float(self._ac_start_var.get())
+                e = float(self._ac_end_var.get())
+                new_dur = max(0.0, e - s)
+            except ValueError:
+                new_dur = self._ac_file_dur
+        self._dur_var.set(str(round(new_dur, 3)))
+
+    def _update_ac_fields(self):
+        enabled = not self._use_full_var.get()
+        state   = tk.NORMAL if enabled else tk.DISABLED
+        for ent in (self._ac_start_entry, self._ac_end_entry):
+            if ent:
+                try:
+                    ent.config(state=state)
+                except tk.TclError:
+                    pass
+
+    def _on_ac_time_change(self):
+        real_node = self._get_node() if self._get_node else self._node
+        if not real_node:
+            return
+        file_dur = self._ac_file_dur
+        try:
+            start = float(self._ac_start_var.get())
+            start = max(0.0, min(start, file_dur))
+        except ValueError:
+            start = 0.0
+        try:
+            end = float(self._ac_end_var.get())
+            end = max(start, min(end, file_dur))
+        except ValueError:
+            end = file_dur
+        real_node["audio_clip_start"] = start
+        real_node["audio_clip_end"]   = end
+        self._ac_start_var.set(f"{start:.3f}")
+        self._ac_end_var.set(f"{end:.3f}")
+        self._dur_var.set(str(round(max(0.0, end - start), 3)))
 
     def _update_lyrics_checkbox(self):
         if not self._lyrics_chk:
@@ -378,6 +489,10 @@ class VideoClipView:
         direct_imgs  = sorted([n for n in children if n.get("type") == "image"],
                               key=lambda n: n.get("start_time") or 0.0)
 
+        rn        = self._get_node() if self._get_node else self._node
+        use_full  = rn.get("audio_clip_use_full", True) if rn else True
+        ac_start  = 0.0 if (not rn or use_full) else float(rn.get("audio_clip_start") or 0.0)
+
         px_per_s = (w - 4) / dur
 
         def _bar_label(x0, x1, y_mid, text):
@@ -411,10 +526,11 @@ class VideoClipView:
         # ── Cue marker lines (drawn after bars so they appear on top) ─
         if show_lyrics:
             for cue in cues:
-                t = float(cue.get("start", 0.0))
-                if t > dur + 1e-9:
-                    break
-                x = 2 + t * px_per_s
+                t_abs = float(cue.get("start", 0.0))
+                t_rel = t_abs - ac_start
+                if t_rel < -1e-9 or t_rel > dur + 1e-9:
+                    continue
+                x = 2 + t_rel * px_per_s
                 c.create_line(x, _LANE_TOP, x, _LANE_BOT,
                               fill="#9b59b6", dash=(3, 3), width=1)
 
@@ -433,7 +549,8 @@ class VideoClipView:
         t = 0.0
         while t <= dur + 1e-9:
             x     = 2 + t * px_per_s
-            label = f"{int(t)}s" if abs(t - round(t)) < 1e-6 else f"{t:.1f}s"
+            t_abs = ac_start + t
+            label = f"{int(t_abs)}s" if abs(t_abs - round(t_abs)) < 1e-6 else f"{t_abs:.1f}s"
             c.create_line(x, _LANE_BOT + 2, x, _LANE_BOT + 6, fill=dim, width=1)
             c.create_text(x, _LABEL_Y, text=label, anchor="n",
                           fill=dim, font=("Helvetica", 7))
@@ -442,11 +559,12 @@ class VideoClipView:
         # ── Cue text labels ───────────────────────────────────────
         if show_lyrics:
             for cue in cues:
-                t    = float(cue.get("start", 0.0))
-                text = (cue.get("text") or "").strip()
-                if not text or t > dur + 1e-9:
+                t_abs = float(cue.get("start", 0.0))
+                t_rel = t_abs - ac_start
+                text  = (cue.get("text") or "").strip()
+                if not text or t_rel < -1e-9 or t_rel > dur + 1e-9:
                     continue
-                x = 2 + t * px_per_s
+                x = 2 + t_rel * px_per_s
                 c.create_text(x + 2, _CUE_Y, text=text[:18],
                               anchor="nw", fill="#9b59b6", font=("Helvetica", 6))
 
