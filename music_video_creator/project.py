@@ -9,27 +9,41 @@ VPROJ_EXTENSION = ".vproj"
 def _resolve_tree_save(node: dict, project_dir: Path) -> dict:
     if not node:
         return node
-    return {
-        "type":     node.get("type"),
-        "name":     node.get("name"),
-        "path":     _to_stored_path(node["path"], project_dir) if node.get("path") else None,
+    out = {
+        "type":       node.get("type"),
+        "name":       node.get("name"),
+        "path":       _to_stored_path(node["path"], project_dir) if node.get("path") else None,
         "duration":   node.get("duration"),
         "start_time": node.get("start_time"),
         "children":   [_resolve_tree_save(c, project_dir) for c in node.get("children", [])],
     }
+    if node.get("type") == "video_clip":
+        ac_path = node.get("audio_clip_path")
+        out["audio_clip_path"]     = _to_stored_path(ac_path, project_dir) if ac_path else None
+        out["audio_clip_use_full"] = node.get("audio_clip_use_full")
+        out["audio_clip_start"]    = node.get("audio_clip_start")
+        out["audio_clip_end"]      = node.get("audio_clip_end")
+    return out
 
 
 def _resolve_tree_load(node: dict, project_dir: Path) -> dict:
     if not node:
         return node
-    return {
-        "type":     node.get("type"),
-        "name":     node.get("name"),
-        "path":     _to_absolute_path(node["path"], project_dir) if node.get("path") else None,
+    out = {
+        "type":       node.get("type"),
+        "name":       node.get("name"),
+        "path":       _to_absolute_path(node["path"], project_dir) if node.get("path") else None,
         "duration":   node.get("duration"),
         "start_time": node.get("start_time"),
         "children":   [_resolve_tree_load(c, project_dir) for c in node.get("children", [])],
     }
+    if node.get("type") == "video_clip":
+        ac_path = node.get("audio_clip_path")
+        out["audio_clip_path"]     = _to_absolute_path(ac_path, project_dir) if ac_path else None
+        out["audio_clip_use_full"] = node.get("audio_clip_use_full")
+        out["audio_clip_start"]    = node.get("audio_clip_start")
+        out["audio_clip_end"]      = node.get("audio_clip_end")
+    return out
 
 
 def _to_stored_path(asset_path: str, project_dir: Path) -> str:
