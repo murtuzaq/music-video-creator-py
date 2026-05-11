@@ -9,13 +9,15 @@ except ImportError:
 
 from ._helpers import field_label
 
-_TICK_STEPS = (0.05, 0.1, 0.2, 0.25, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300)
+_TICK_STEPS  = (0.05, 0.1, 0.2, 0.25, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300)
 
-_LANE_TOP  = 10
-_LANE_BOT  = 46
-_LABEL_Y   = 58
-_CUE_Y     = 74
-_STRIP_H   = 90
+_LANE_TOP    = 8
+_LANE_BOT    = 44
+_LABEL_Y     = 57
+_STRIP_H     = 75     # compact height (no lyrics)
+_STRIP_H_LY  = 180    # default height when lyrics are on
+_LYRIC_Y     = 72     # y where cue text rows begin
+_LYRIC_ROW_H = 15     # pixels per cue-text stagger row
 
 
 def _nice_tick(total: float, target_count: int = 6) -> float:
@@ -67,6 +69,11 @@ class VideoClipView:
         self._ac_end_entry        = None
         self._ac_file_dur         = 0.0
         self._ac_t_start          = 0.0   # effective audio-file start offset shown on timeline
+        self._preview_collapsed   = False
+        self._preview_toggle_btn  = None
+        self._strip_h             = _STRIP_H
+        self._strip_resize_y0     = None
+        self._strip_resize_h0     = None
 
     def build(self, node: dict):
         self._node = node
@@ -146,10 +153,19 @@ class VideoClipView:
         ttk.Separator(self._body, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=(10, 8))
 
         hdr = tk.Frame(self._body, bg=bg)
-        hdr.pack(fill=tk.X, pady=(0, 6))
+        hdr.pack(fill=tk.X, pady=(0, 4))
         tk.Label(hdr, text="Clip Preview", bg=bg,
                  fg=self._colors["fg_dim_alt"],
                  font=("Helvetica", 8)).pack(side=tk.LEFT)
+        self._preview_toggle_btn = tk.Button(
+            hdr, text="▼",
+            command=self._toggle_preview,
+            bg=bg, fg=self._colors["fg_dim_alt"],
+            activebackground=bg, activeforeground=self._colors["fg_primary"],
+            relief=tk.FLAT, bd=0, padx=4, pady=0,
+            font=("Helvetica", 8), cursor="hand2",
+        )
+        self._preview_toggle_btn.pack(side=tk.LEFT, padx=(4, 0))
         real_node = self._get_node() if self._get_node else node
         self._show_lyrics_var.set(real_node.get("_show_lyrics", False))
         self._lyrics_chk = tk.Checkbutton(
@@ -164,23 +180,34 @@ class VideoClipView:
             cursor="hand2",
             command=self._on_lyrics_toggle,
         )
-        # Now the widget exists — sync visibility with current children
         self._update_lyrics_checkbox()
 
         self._preview_lbl = tk.Label(self._body, bg=bg)
-        self._preview_lbl.pack(pady=(0, 6))
+        if not self._preview_collapsed:
+            self._preview_lbl.pack(pady=(0, 4))
+
+        # sync strip height with lyrics state
+        self._strip_h = _STRIP_H_LY if self._show_lyrics_var.get() else _STRIP_H
 
         self._strip_canvas = tk.Canvas(
             self._body,
             bg=self._colors.get("bg_dark", "#252525"),
-            height=_STRIP_H, highlightthickness=1,
+            height=self._strip_h, highlightthickness=1,
             highlightbackground=self._colors.get("bg_medium", "#2b2b2b"))
-        self._strip_canvas.pack(fill=tk.X, pady=(0, 8))
+        self._strip_canvas.pack(fill=tk.X, pady=(0, 0))
         c = self._strip_canvas
         c.bind("<Configure>", lambda _e: self._draw_strip())
         c.bind("<Button-1>",  self._on_strip_click)
         c.bind("<B1-Motion>", self._on_strip_drag)
         c.config(cursor="sb_h_double_arrow")
+
+        # drag-resize handle
+        handle = tk.Frame(self._body,
+                          bg=self._colors.get("bg_medium", "#2b2b2b"),
+                          height=6, cursor="sb_v_double_arrow")
+        handle.pack(fill=tk.X, pady=(0, 6))
+        handle.bind("<Button-1>",  self._on_resize_start)
+        handle.bind("<B1-Motion>", self._on_resize_drag)
 
         self._draw_strip()
         self._update_preview()
@@ -353,6 +380,47 @@ class VideoClipView:
         real_node = self._get_node() if self._get_node else self._node
         if real_node is not None:
             real_node["_show_lyrics"] = val
+        new_h = _STRIP_H_LY if val else _STRIP_H
+        self._strip_h = new_h
+        if self._strip_canvas:
+            try:
+                self._strip_canvas.config(height=new_h)
+            except tk.TclError:
+                pass
+        self._draw_strip()
+
+    def _toggle_preview(self):
+        self._preview_collapsed = not self._preview_collapsed
+        if self._preview_toggle_btn:
+            try:
+                self._preview_toggle_btn.config(
+                    text="▶" if self._preview_collapsed else "▼")
+            except tk.TclError:
+                pass
+        if self._preview_lbl:
+            try:
+                if self._preview_collapsed:
+                    self._preview_lbl.pack_forget()
+                else:
+                    self._preview_lbl.pack(before=self._strip_canvas, pady=(0, 4))
+                    self._update_preview()
+            except tk.TclError:
+                pass
+
+    def _on_resize_start(self, event):
+        self._strip_resize_y0 = event.y_root
+        self._strip_resize_h0 = self._strip_canvas.winfo_height() if self._strip_canvas else _STRIP_H
+
+    def _on_resize_drag(self, event):
+        if self._strip_resize_y0 is None or not self._strip_canvas:
+            return
+        delta = event.y_root - self._strip_resize_y0
+        new_h = max(60, min(500, self._strip_resize_h0 + delta))
+        self._strip_h = int(new_h)
+        try:
+            self._strip_canvas.config(height=self._strip_h)
+        except tk.TclError:
+            pass
         self._draw_strip()
 
     def _on_use_full_toggle(self):
@@ -535,7 +603,7 @@ class VideoClipView:
                 if t_rel < -1e-9 or t_rel > dur + 1e-9:
                     continue
                 x = 2 + t_rel * px_per_s
-                c.create_line(x, _LANE_TOP, x, _LANE_BOT,
+                c.create_line(x, _LANE_TOP, x, _LABEL_Y + 4,
                               fill="#9b59b6", dash=(3, 3), width=1)
 
         # ── Time ticks (min interval ≥ min cue gap when lyrics on) ──
@@ -560,17 +628,19 @@ class VideoClipView:
                           fill=dim, font=("Helvetica", 7))
             t = round(t + inc, 10)
 
-        # ── Cue text labels ───────────────────────────────────────
-        if show_lyrics:
-            for cue in cues:
-                t_abs = float(cue.get("start", 0.0))
-                t_rel = t_abs - ac_start
-                text  = (cue.get("text") or "").strip()
-                if not text or t_rel < -1e-9 or t_rel > dur + 1e-9:
-                    continue
-                x = 2 + t_rel * px_per_s
-                c.create_text(x + 2, _CUE_Y, text=text[:18],
-                              anchor="nw", fill="#9b59b6", font=("Helvetica", 6))
+        # ── Cue text rows (staggered, multi-row) ─────────────────
+        if show_lyrics and h > _LYRIC_Y + _LYRIC_ROW_H:
+            avail_rows = max(1, (h - _LYRIC_Y) // _LYRIC_ROW_H)
+            visible = [(float(cue.get("start", 0.0)) - ac_start, (cue.get("text") or "").strip())
+                       for cue in cues
+                       if (cue.get("text") or "").strip()
+                       and -1e-9 <= float(cue.get("start", 0.0)) - ac_start <= dur + 1e-9]
+            for idx, (t_rel, text) in enumerate(visible):
+                x   = 2 + t_rel * px_per_s
+                row = idx % avail_rows
+                y   = _LYRIC_Y + row * _LYRIC_ROW_H
+                c.create_text(x + 3, y, text=text[:28], anchor="nw",
+                              fill="#b87fe0", font=("Helvetica", 8))
 
         # ── Playhead ──────────────────────────────────────────────
         px = 2 + self._playhead_t * px_per_s
